@@ -83,6 +83,18 @@ Full architecture audit at `/app/memory/AUDIT.md` (last updated 2026-02-13).
 - `/app/test_reports/iteration_1.json` — Phase 2 testing agent report
 
 ## Recent changelog
+- **2026-02-13 (third pass)**:
+  - **Stuck-pipeline recovery shipped** (Issue 1 from user). New `engines/recovery_engine.py`
+    with `sweep_stale_pipelines()` (called on FastAPI startup; reverts any project in
+    `Generating/Building/Repair/Acceptance` older than 90s to its safest prior checkpoint
+    and emits `pipeline.aborted` event) and `manual_recover(project_id)` (exposed via
+    `POST /api/projects/{id}/recover`). Frontend wires a recovery banner on Cockpit + Build
+    pages and a "stuck · recover" badge on Dashboard cards. Tested: both previously stuck
+    user projects (`a2a7b1c77270`, `a6ed1376e046`) auto-recovered to `Plan` on the next
+    backend boot. 4 unit tests in `tests/test_recovery_engine.py` all pass.
+  - **Master reference doc** created at `/app/memory/REFERENCE.md` — single entry point
+    for any AI agent to find pick-up directions, repo layout, API map, Mongo schema,
+    "Real / Working" list, and stuck-pipeline troubleshooting.
 - **2026-02-13 (later in same session)**: 
   - **MEDIUM-1 shipped** — `acceptance_engine.run_acceptance` now accepts an optional
     `plan` argument; when a plan is provided, every `plan.endpoints[*].path` is searched

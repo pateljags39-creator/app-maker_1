@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Plus, Activity, FolderGit2, AlertCircle } from 'lucide-react';
+import { Plus, Activity, FolderGit2, AlertCircle, AlertTriangle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import StatePill from '@/components/cockpit/StatePill';
 import StatusBadge from '@/components/cockpit/StatusBadge';
 import api from '@/lib/api';
+
+const STUCK_STATES = new Set(['Generating', 'Building', 'Repair', 'Acceptance']);
+const STUCK_GRACE_MS = 90_000;
+const isStuck = (p) => STUCK_STATES.has(p.state) && (Date.now() - (p.updated_at || 0) * 1000) > STUCK_GRACE_MS;
 
 export default function Dashboard() {
   const [projects, setProjects] = useState(null);
@@ -101,9 +105,18 @@ export default function Dashboard() {
                 </div>
                 <p className="text-xs text-muted-foreground line-clamp-2">{p.idea}</p>
                 <div className="flex flex-wrap gap-2 mt-auto">
+                  {isStuck(p) && (
+                    <span
+                      data-testid="project-stuck-badge"
+                      className="inline-flex items-center gap-1 rounded-md border border-[hsl(var(--warning))]/40 bg-[hsl(var(--warning))]/10 px-2 py-0.5 text-[10px] font-medium text-[hsl(var(--warning))]"
+                      title={`Stuck in ${p.state} — open the project & click Recover.`}
+                    >
+                      <AlertTriangle className="h-3 w-3" /> stuck · recover
+                    </span>
+                  )}
                   {p.last_build_status && <StatusBadge status={p.last_build_status} label={`build ${p.last_build_status}`} />}
                   {p.last_acceptance_status && <StatusBadge status={p.last_acceptance_status} label={`accept ${p.last_acceptance_status}`} />}
-                  {!p.last_build_status && !p.last_acceptance_status && <StatusBadge status="PLACEHOLDER" label="not yet built" />}
+                  {!p.last_build_status && !p.last_acceptance_status && !isStuck(p) && <StatusBadge status="PLACEHOLDER" label="not yet built" />}
                 </div>
               </Link>
             ))}

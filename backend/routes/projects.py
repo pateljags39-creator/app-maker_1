@@ -47,3 +47,18 @@ async def delete_project(project_id: str):
     if n == 0:
         raise HTTPException(404, "project_not_found")
     return None
+
+
+@router.post("/{project_id}/recover")
+async def recover_project(project_id: str):
+    """Unstick a project frozen in Generating/Building/Repair/Acceptance.
+
+    Used when the user observes the cockpit stuck mid-pipeline (e.g., after
+    a server hot-reload killed the background task). Emits a ledger event
+    and resets state to the safest prior checkpoint so the user can retry.
+    """
+    from engines.recovery_engine import manual_recover
+    out = await manual_recover(project_id)
+    if out is None:
+        raise HTTPException(404, "project_not_found")
+    return out

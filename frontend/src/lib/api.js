@@ -58,6 +58,8 @@ export const api = {
   // events
   listEvents: (id, limit = 50) => client.get(`/projects/${id}/events`, { params: { limit } }).then(r => r.data),
   eventsStreamUrl: (id) => `${API_BASE}/projects/${id}/events/stream`,
+  // recovery — unstick a project frozen in Generating/Building/Repair/Acceptance
+  recoverProject: (id) => client.post(`/projects/${id}/recover`).then(r => r.data),
 };
 
 export default api;

@@ -1,14 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Hammer, History, Wrench } from 'lucide-react';
+import { AlertTriangle, Hammer, History, Wrench } from 'lucide-react';
 import { toast } from 'sonner';
 import StatusBadge from '@/components/cockpit/StatusBadge';
 import api from '@/lib/api';
+
+const STUCK_STATES = new Set(['Generating', 'Building', 'Repair', 'Acceptance']);
+const STUCK_GRACE_MS = 90_000;
 
 export default function BuildPage() {
   const { project, refresh } = useOutletContext();
   const [builds, setBuilds] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [recovering, setRecovering] = useState(false);
   const [selected, setSelected] = useState(0);
 
   const load = async () => {
@@ -28,10 +32,56 @@ export default function BuildPage() {
     } finally { setBusy(false); }
   };
 
+  const onRecover = async () => {
+    try {
+      setRecovering(true);
+      const out = await api.recoverProject(project.id);
+      if (out.reason === 'no_op_not_stuck') {
+        toast.info('Project is not stuck.');
+      } else {
+        toast.success(`Recovered: ${out.previous_state} -> ${out.recovered_state}. You can retry now.`);
+      }
+      refresh();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Recover failed');
+    } finally { setRecovering(false); }
+  };
+
+  // Detect orphaned pipeline: state is transient but no activity for >grace.
+  const updatedAtMs = (project.updated_at || 0) * 1000;
+  const isStuck = STUCK_STATES.has(project.state) && (Date.now() - updatedAtMs) > STUCK_GRACE_MS;
+
   const sel = builds[selected];
 
   return (
     <div className="flex flex-col gap-4">
+      {isStuck && (
+        <div
+          className="surface-1 p-4 border border-[hsl(var(--warning))]/40 bg-[hsl(var(--warning))]/5 flex items-start justify-between gap-3 flex-wrap"
+          data-testid="stuck-pipeline-banner"
+        >
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 mt-0.5 text-[hsl(var(--warning))]" />
+            <div className="text-xs">
+              <div className="font-semibold">Pipeline appears stuck in <span className="font-mono">{project.state}</span></div>
+              <div className="text-muted-foreground mt-0.5">
+                No progress for over {Math.round((Date.now() - updatedAtMs) / 1000)}s. This usually means the backend
+                restarted while the pipeline was running. Click <strong>Recover</strong> to reset
+                state to the safest checkpoint, then retry.
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={onRecover}
+            disabled={recovering}
+            data-testid="recover-pipeline-button"
+            className="inline-flex items-center gap-2 rounded-md bg-[hsl(var(--warning))] text-black px-3 py-1.5 text-xs font-medium hover:opacity-90 disabled:opacity-50"
+          >
+            {recovering ? 'Recovering…' : 'Recover'}
+          </button>
+        </div>
+      )}
+
       <div className="surface-1 p-4 flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
           <Hammer className="h-4 w-4 text-[hsl(var(--warning))]" />

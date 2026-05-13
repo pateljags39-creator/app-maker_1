@@ -20,6 +20,7 @@ logging.basicConfig(
 )
 
 from db import close_client, ensure_indexes, init_client  # noqa: E402
+from engines.recovery_engine import sweep_stale_pipelines  # noqa: E402
 from routes import api  # noqa: E402
 
 
@@ -29,6 +30,17 @@ async def lifespan(app: FastAPI):
     init_client()
     await ensure_indexes()
     Path(os.environ.get("WORKSPACE_DIR", "/app/workspace")).mkdir(parents=True, exist_ok=True)
+    # Recover projects whose pipeline died (hot-reload, crash, deploy).
+    try:
+        recovered = await sweep_stale_pipelines()
+        if recovered:
+            logging.getLogger("startup").warning(
+                "Stale-pipeline sweep recovered %d project(s): %s",
+                len(recovered),
+                [r["project_id"] for r in recovered],
+            )
+    except Exception as e:  # pragma: no cover
+        logging.getLogger("startup").exception("Stale-pipeline sweep failed: %s", e)
     yield
     # Shutdown
     await close_client()

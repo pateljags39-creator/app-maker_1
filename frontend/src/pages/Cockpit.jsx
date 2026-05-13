@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
-import { Play, ArrowRight, ListTree, Network, MessagesSquare, FileCode2, Hammer, ClipboardCheck, Package } from 'lucide-react';
+import { Play, ArrowRight, AlertTriangle, ListTree, Network, MessagesSquare, FileCode2, Hammer, ClipboardCheck, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import StatusBadge from '@/components/cockpit/StatusBadge';
 import PhaseStepper from '@/components/cockpit/PhaseStepper';
 import api from '@/lib/api';
 import useEventStream from '@/lib/useEventStream';
+
+const STUCK_STATES = new Set(['Generating', 'Building', 'Repair', 'Acceptance']);
+const STUCK_GRACE_MS = 90_000;
 
 function QuickStat({ label, value, status, testid }) {
   return (
@@ -22,6 +25,7 @@ function QuickStat({ label, value, status, testid }) {
 export default function Cockpit() {
   const { project, refresh } = useOutletContext();
   const [running, setRunning] = useState(false);
+  const [recovering, setRecovering] = useState(false);
   const [pipelineRunning, setPipelineRunning] = useState(false);
 
   const { events: live } = useEventStream(api.eventsStreamUrl(project.id), { enabled: !!project?.id });
@@ -53,7 +57,25 @@ export default function Cockpit() {
   };
 
   const hasBrd = (project.brd_maturity || 0) > 0;
-  const pipelineDisabled = running || pipelineRunning || !hasBrd;
+  const updatedAtMs = (project.updated_at || 0) * 1000;
+  const isStuck = STUCK_STATES.has(project.state) && (Date.now() - updatedAtMs) > STUCK_GRACE_MS && !pipelineRunning;
+
+  const onRecover = async () => {
+    try {
+      setRecovering(true);
+      const out = await api.recoverProject(project.id);
+      if (out.reason === 'no_op_not_stuck') {
+        toast.info('Project is not stuck.');
+      } else {
+        toast.success(`Recovered: ${out.previous_state} → ${out.recovered_state}. You can retry now.`);
+      }
+      refresh();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Recover failed');
+    } finally { setRecovering(false); }
+  };
+
+  const pipelineDisabled = running || pipelineRunning || !hasBrd || isStuck;
   const pipelineLabel = !hasBrd
     ? 'Answer BRD first'
     : pipelineRunning
@@ -72,6 +94,35 @@ export default function Cockpit() {
 
   return (
     <div className="flex flex-col gap-6">
+      {isStuck && (
+        <div
+          className="surface-1 p-4 border border-[hsl(var(--warning))]/40 bg-[hsl(var(--warning))]/5 flex items-start justify-between gap-3 flex-wrap"
+          data-testid="cockpit-stuck-banner"
+        >
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 mt-0.5 text-[hsl(var(--warning))]" />
+            <div className="text-xs">
+              <div className="font-semibold">
+                Pipeline appears stuck in <span className="font-mono">{project.state}</span>
+              </div>
+              <div className="text-muted-foreground mt-0.5 max-w-2xl">
+                No activity for over {Math.round((Date.now() - updatedAtMs) / 1000)}s. This usually
+                means the backend restarted while the pipeline was running. Click <strong>Recover</strong> to
+                reset to the safest checkpoint, then retry the pipeline.
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={onRecover}
+            disabled={recovering}
+            data-testid="cockpit-recover-button"
+            className="inline-flex items-center gap-2 rounded-md bg-[hsl(var(--warning))] text-black px-3 py-1.5 text-xs font-medium hover:opacity-90 disabled:opacity-50"
+          >
+            {recovering ? 'Recovering…' : 'Recover'}
+          </button>
+        </div>
+      )}
+
       <PhaseStepper currentState={project.state} />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
