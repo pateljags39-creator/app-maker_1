@@ -1,0 +1,84 @@
+{
+  "project_id": "a6ed1376e046",
+  "workspace": "/app/workspace/projects/a6ed1376e046",
+  "started_at": 1778704681.6312633,
+  "finished_at": 1778704686.8410828,
+  "overall_status": "FAIL",
+  "artifacts": {},
+  "summary": {
+    "frontend_pass": false,
+    "backend_pass": false,
+    "duration_s": 5.21
+  },
+  "frontend": [
+    {
+      "name": "frontend.install",
+      "cmd": [
+        "npm",
+        "ci",
+        "--no-audit",
+        "--no-fund",
+        "--loglevel=error",
+        "--prefer-offline"
+      ],
+      "cwd": "/app/workspace/projects/a6ed1376e046/frontend",
+      "returncode": 0,
+      "duration_s": 4.7656529219966615,
+      "stdout_tail": "\nadded 330 packages in 5s\n",
+      "stderr_tail": "",
+      "skipped": false,
+      "reason": ""
+    },
+    {
+      "name": "frontend.build",
+      "cmd": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "cwd": "/app/workspace/projects/a6ed1376e046/frontend",
+      "returncode": 1,
+      "duration_s": 0.44381521100876853,
+      "stdout_tail": "\n> web-calculator-pro-frontend@0.0.0 build\n> vite build\n\nvite v5.4.21 building for production...\ntransforming...\n\u2713 7 modules transformed.\n",
+      "stderr_tail": "x Build failed in 104ms\nerror during build:\n[vite]: Rollup failed to resolve import \"uuid\" from \"/app/workspace/projects/a6ed1376e046/frontend/src/App.jsx\".\nThis is most likely unintended because it can break your application at runtime.\nIf you do want to externalize this module explicitly add it to\n`build.rollupOptions.external`\n    at viteWarn (file:///app/workspace/projects/a6ed1376e046/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:65855:17)\n    at onwarn (file:///app/workspace/projects/a6ed1376e046/frontend/node_modules/@vitejs/plugin-react/dist/index.js:90:7)\n    at onRollupWarning (file:///app/workspace/projects/a6ed1376e046/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:65885:5)\n    at onwarn (file:///app/workspace/projects/a6ed1376e046/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:65550:7)\n    at file:///app/workspace/projects/a6ed1376e046/frontend/node_modules/rollup/dist/es/shared/node-entry.js:21403:13\n    at Object.logger [as onLog] (file:///app/workspace/projects/a6ed1376e046/frontend/node_modules/rollup/dist/es/shared/node-entry.js:23384:9)\n    at ModuleLoader.handleInvalidResolvedId (file:///app/workspace/projects/a6ed1376e046/frontend/node_modules/rollup/dist/es/shared/node-entry.js:22128:26)\n    at file:///app/workspace/projects/a6ed1376e046/frontend/node_modules/rollup/dist/es/shared/node-entry.js:22086:26\n",
+      "skipped": false,
+      "reason": ""
+    }
+  ],
+  "backend": [
+    {
+      "name": "backend.install",
+      "cmd": [
+        "pip",
+        "install",
+        "-q",
+        "--disable-pip-version-check",
+        "--no-input",
+        "-r",
+        "requirements.txt"
+      ],
+      "cwd": "/app/workspace/projects/a6ed1376e046/backend",
+      "returncode": 0,
+      "duration_s": 1.8725328010041267,
+      "stdout_tail": "",
+      "stderr_tail": "WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv\n",
+      "skipped": false,
+      "reason": ""
+    },
+    {
+      "name": "backend.import",
+      "cmd": [
+        "python",
+        "-c",
+        "import importlib,sys; sys.path.insert(0,'.'); m=importlib.import_module('main'); print('imported', m.__name__)"
+      ],
+      "cwd": "/app/workspace/projects/a6ed1376e046/backend",
+      "returncode": 1,
+      "duration_s": 2.5975621430116007,
+      "stdout_tail": "",
+      "stderr_tail": "Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n  File \"/usr/local/lib/python3.11/importlib/__init__.py\", line 126, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1204, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1176, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1147, in _find_and_load_unlocked\n  File \"<frozen importlib._bootstrap>\", line 690, in _load_unlocked\n  File \"<frozen importlib._bootstrap_external>\", line 940, in exec_module\n  File \"<frozen importlib._bootstrap>\", line 241, in _call_with_frames_removed\n  File \"/app/workspace/projects/a6ed1376e046/backend/main.py\", line 43, in <module>\n    @router.post(\"/calculations\", response_model=schemas.CalculationRead, status_code=status.HTTP_201_CREATED)\n                                                 ^^^^^^^^^^^^^^^^^^^^^^^\nAttributeError: module 'schemas' has no attribute 'CalculationRead'. Did you mean: 'CalculationCreate'?\n",
+      "skipped": false,
+      "reason": ""
+    }
+  ]
+}

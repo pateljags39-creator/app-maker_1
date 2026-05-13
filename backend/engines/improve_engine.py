@@ -397,7 +397,7 @@ async def request_improve(
 
     # 6) Re-run acceptance for an honest read-out.
     try:
-        rep = run_acceptance(workspace, brd, arch, build_summary=build.to_dict())
+        rep = run_acceptance(workspace, brd, arch, build_summary=build.to_dict(), plan=plan)
         attempt.acceptance_after = rep.overall
     except Exception as e:
         logger.warning("acceptance after improve failed: %s", e)

@@ -55,11 +55,13 @@ async def _do_build(project_id: str) -> None:
         # Run acceptance pipeline as a follow-up
         brd_doc = await repo.get_brd(project_id)
         arch_doc = await repo.get_architecture(project_id)
+        plan_doc = await repo.get_plan(project_id)
         brd = (brd_doc or {}).get("brd") or {}
         arch = (arch_doc or {}).get("decision") or {}
+        plan = (plan_doc or {}).get("plan") or {}
         if brd and arch:
             await repo.set_state(project_id, "Acceptance")
-            report = run_acceptance(ws, brd, arch, build_summary=build.to_dict())
+            report = run_acceptance(ws, brd, arch, build_summary=build.to_dict(), plan=plan)
             await repo.add_acceptance(project_id, report.to_dict())
             await repo.update_project(project_id, last_acceptance_status=report.overall)
             await led.emit_simple(project_id, "acceptance.completed",

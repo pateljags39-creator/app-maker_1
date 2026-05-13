@@ -34,19 +34,18 @@ per-minute rate limit.
 - Real build engine (npm install/build + pip install/import)
 - Repair engine (classify → patch → retry, rollback on no-improvement, constraint-respecting)
 - Snapshot/rollback
-- Acceptance engine (15 checks + requirement coverage; **now honors `status=unsupported`**)
+- Acceptance engine (15 checks + requirement coverage; **honors `status=unsupported`**; **MEDIUM-1: verifies plan.endpoints[*].path against backend source**)
 - Export with clean ZIP + manifest + secret scan
 - Event ledger + SSE
-- Phase 3a: **Improve/Fix workflow** end-to-end (snapshot → 1 Pro call → constraint validate → atomic apply → real rebuild → auto-rollback on regression → re-acceptance). **Live-verified 2026-02-13** with a tiny calculator workspace: rolled_back path fired correctly when build regressed PASS → PARTIAL.
-- Phase 3b: **Bounded-customization constraints registry** (engine + CRUD routes + Mongo + repair-engine integration + Constraints UI)
-- Phase 4 (partial): `ingest_engine.py` + `routes/ingest.py` scaffolded (632/254 LoC) — not exercised end-to-end yet
+- Phase 3a: **Improve/Fix workflow** end-to-end (live-verified 2026-02-13)
+- Phase 3b: **Bounded-customization constraints registry**
+- **Phase 4: Rework/Ingest existing project (live-verified 2026-02-13)** — ZIP upload → safe extract → stack detect → deterministic architecture → endpoint scan → 1-Pro-call BRD-from-code with honest `implemented/partial/unsupported` markers
 - Hybrid LLM tier routing: `tier="light"` → Flash, `tier="heavy"` → Pro
 
 ### Missing / Backlog
-- **P1 — Phase 4 Rework/Ingest E2E verification**: live test of ZIP upload / git URL → BRD-from-code → architecture → Improve unlock
-- **P2 — MEDIUM-1**: acceptance engine should verify `plan.endpoints[*].path` exists in generated `backend/main.py`
 - **P2 — MEDIUM-2**: per-project configurable repair retry budget (currently hard-coded at 2)
 - **P2 — Phase 5**: internal component-library lookup / resource discovery
+- **P2 — Phase 4 polish**: surface ingest UI page (current implementation is backend-only)
 - **P3 — LOW-1**: 6× react-hooks/exhaustive-deps warnings (Acceptance/Architecture/BRD/Build/Export/Plan)
 - **P3 — LOW-2**: requirements.txt trim (currently a wide `pip freeze` with ~130 pins)
 - **P3 — LOW-3**: build `overall_status` returns `null` in some API paths (cosmetic; UI compensates)
@@ -84,6 +83,23 @@ Full architecture audit at `/app/memory/AUDIT.md` (last updated 2026-02-13).
 - `/app/test_reports/iteration_1.json` — Phase 2 testing agent report
 
 ## Recent changelog
+- **2026-02-13 (later in same session)**: 
+  - **MEDIUM-1 shipped** — `acceptance_engine.run_acceptance` now accepts an optional
+    `plan` argument; when a plan is provided, every `plan.endpoints[*].path` is searched
+    in `backend/**/*.py` (handles `APIRouter(prefix='/api')` by also matching the
+    prefix-stripped form). Missing endpoints surface as a PARTIAL
+    `plan.endpoints_implemented` check with the full missing list. All 4 call sites
+    (`routes/acceptance.py`, `routes/build.py`, `routes/generate.py`,
+    `engines/improve_engine.py`) updated. Back-compat: no plan → check skipped.
+  - **Phase 4 ingest E2E verified live** — built a tiny in-memory ZIP (Vite+React +
+    FastAPI notes app, in-memory storage), uploaded via `/api/projects/ingest/zip`,
+    polled until `ingest_status=complete`. Result: project landed in
+    `state=Architecture`, architecture correctly detected as `api_driven` (honest —
+    no DB present), plan synthesized 3 endpoints (`GET/POST /notes`,
+    `DELETE /notes/{note_id}`), and BRD-from-code (1 Pro call) returned 5
+    honestly-classified requirements including 2 `unsupported` markers for
+    persistence-related features that the source code doesn't actually implement.
+  - Confirmed direct Gemini is primary; Emergent fallback never triggered.
 - **2026-02-13**: HIGH-1 fix — `architecture_engine.detect_architecture` now returns
   `unsupported_requirement_indices` + `unsupported_signal_keywords` when limited_prototype
   is accepted on a backend-dependent BRD. `routes/architecture.override` propagates these
@@ -96,8 +112,8 @@ Full architecture audit at `/app/memory/AUDIT.md` (last updated 2026-02-13).
   (hybrid LLM tier routing) + Phase 3a + Phase 3b shipped.
 
 ## Next actions (prioritised)
-1. **P1** Phase 4 — exercise ingest end-to-end (small ZIP or tiny public repo) to confirm
-   workspace staging + BRD-from-code + architecture detect path.
-2. **P2** MEDIUM-1 endpoint↔requirement verification in acceptance.
-3. **P2** Surface repair retry budget as a project setting (MEDIUM-2).
-4. **P3** Polish: react-hooks deps warnings, requirements.txt trim.
+1. **P2** Surface ingest in the cockpit UI (an `Ingest.jsx` page with ZIP-drop + URL form, wired into the sidebar between Dashboard and New Project).
+2. **P2** MEDIUM-2 — surface repair retry budget as a per-project setting (currently hard-coded at 2).
+3. **P2** Phase 5 — internal component-library lookup / resource discovery.
+4. **P3** Polish: 6× react-hooks/exhaustive-deps warnings, requirements.txt trim, `build.overall_status=null` cosmetic.
+5. **P3** "Preview diff before apply" toggle on Improve/Fix UI (cache the manifest from the 1 Pro call, render diff, gate `_apply()` behind explicit accept — would eliminate wasted rebuilds for rejected manifests).

@@ -150,7 +150,9 @@ async def _run_pipeline(project_id: str, auto_prepare: bool = False) -> None:
 
         await repo.set_state(project_id, "Acceptance")
         await led.emit_simple(project_id, "acceptance.started", "Running acceptance checks", severity="info")
-        report = run_acceptance(workspace, brd, arch, build_summary=build.to_dict())
+        plan_doc = await repo.get_plan(project_id)
+        plan = (plan_doc or {}).get("plan") or {}
+        report = run_acceptance(workspace, brd, arch, build_summary=build.to_dict(), plan=plan)
         await repo.add_acceptance(project_id, report.to_dict())
         await repo.update_project(project_id, last_acceptance_status=report.overall)
         await led.emit_simple(project_id, "acceptance.completed",

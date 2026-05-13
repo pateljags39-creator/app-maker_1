@@ -58,6 +58,7 @@ def run_acceptance(
     brd: dict[str, Any],
     architecture: dict[str, Any],
     build_summary: dict[str, Any] | None = None,
+    plan: dict[str, Any] | None = None,
 ) -> AcceptanceReport:
     workspace = Path(workspace)
     report = AcceptanceReport(overall="PASS")
@@ -121,6 +122,80 @@ def run_acceptance(
                 report.checks.append(CheckResult("backend.api_prefix", "PASS", "FastAPI app + /api prefix"))
             else:
                 report.checks.append(CheckResult("backend.api_prefix", "PARTIAL", "missing FastAPI init or /api prefix", "warning"))
+
+    # 3.5) MEDIUM-1: Plan ↔ Endpoint verification.
+    # If a plan was provided and declares endpoints, verify each declared
+    # `plan.endpoints[*].path` is actually referenced in the backend source
+    # (main.py or any backend/*.py file). Endpoints declared but never
+    # implemented produce a PARTIAL "plan.endpoints_implemented" check with
+    # the full missing list — never silently passes.
+    plan_endpoints = (plan or {}).get("endpoints") or []
+    if plan_endpoints:
+        py_sources: list[tuple[str, str]] = []
+        if be.exists():
+            for py in be.rglob("*.py"):
+                if set(py.relative_to(workspace).parts) & {"__pycache__", ".venv"}:
+                    continue
+                try:
+                    py_sources.append((str(py.relative_to(workspace)), py.read_text("utf-8", "replace")))
+                except Exception:
+                    continue
+        missing: list[dict[str, str]] = []
+        matched: list[dict[str, str]] = []
+        for ep in plan_endpoints:
+            if not isinstance(ep, dict):
+                continue
+            path = (ep.get("path") or "").strip()
+            method = (ep.get("method") or "").strip().lower()
+            if not path:
+                continue
+            # Candidate path forms to look for. FastAPI's APIRouter(prefix='/api')
+            # means the decorator literal is the suffix without the prefix, so
+            # we try both the full path and the prefix-stripped form.
+            candidates = {path}
+            if path.startswith("/api/"):
+                candidates.add(path[len("/api"):])  # /api/notes -> /notes
+            elif path.startswith("/api"):
+                candidates.add(path[len("/api"):] or "/")
+            found_in: str | None = None
+            for src_path, text in py_sources:
+                for cand in candidates:
+                    if not cand:
+                        continue
+                    if method:
+                        rx = re.compile(
+                            rf'@(?:app|router|[a-zA-Z_][a-zA-Z0-9_]*)\.{re.escape(method)}\s*\(\s*["\']'
+                            + re.escape(cand) + r'["\']',
+                            re.IGNORECASE,
+                        )
+                        if rx.search(text):
+                            found_in = src_path
+                            break
+                    # Path-only fallback: literal occurrence inside quotes.
+                    if re.search(r'["\']' + re.escape(cand) + r'["\']', text):
+                        found_in = found_in or src_path
+                if found_in and method:
+                    break
+            if found_in:
+                matched.append({"method": method.upper() or "?", "path": path, "file": found_in})
+            else:
+                missing.append({"method": method.upper() or "?", "path": path})
+
+        if not missing:
+            report.checks.append(CheckResult(
+                "plan.endpoints_implemented",
+                "PASS",
+                f"all {len(matched)} planned endpoint(s) found in backend source",
+            ))
+        else:
+            preview = ", ".join(f"{m['method']} {m['path']}" for m in missing[:6])
+            more = f" (+{len(missing) - 6} more)" if len(missing) > 6 else ""
+            report.checks.append(CheckResult(
+                "plan.endpoints_implemented",
+                "PARTIAL",
+                f"{len(missing)}/{len(missing) + len(matched)} planned endpoint(s) missing in backend source: {preview}{more}",
+                "warning",
+            ))
 
     # 4) Secret hygiene
     secret_hits = []
