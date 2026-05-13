@@ -1,0 +1,281 @@
+/* Basic Reset & Body Styles */
+:root {
+  --primary-color: #3f51b5; /* Indigo */
+  --primary-dark-color: #303f9f;
+  --secondary-color: #ff9800; /* Orange */
+  --secondary-dark-color: #f57c00;
+  --text-color: #333;
+  --background-color: #f4f7f6;
+  --card-background: #ffffff;
+  --border-color: #e0e0e0;
+  --error-color: #ef5350;
+  --success-color: #4caf50;
+  --shadow-color: rgba(0, 0, 0, 0.1);
+  --font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-family);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--background-color);
+  color: var(--text-color);
+  line-height: 1.6;
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+#root {
+  width: 100%;
+  max-width: 900px; /* Max width for the app content */
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  color: var(--primary-dark-color);
+  margin-top: 0;
+  margin-bottom: 15px;
+}
+
+p {
+  margin-bottom: 10px;
+}
+
+/* App Container */
+.app-container {
+  background-color: var(--card-background);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px var(--shadow-color);
+  padding: 30px;
+  margin-bottom: 20px;
+}
+
+/* Buttons */
+button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+  margin-right: 10px;
+}
+
+button:last-child {
+  margin-right: 0;
+}
+
+button.primary {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+button.primary:hover {
+  background-color: var(--primary-dark-color);
+  transform: translateY(-1px);
+}
+
+button.secondary {
+  background-color: var(--secondary-color);
+  color: white;
+}
+
+button.secondary:hover {
+  background-color: var(--secondary-dark-color);
+  transform: translateY(-1px);
+}
+
+button.danger {
+  background-color: #e57373; /* Light red */
+  color: white;
+}
+
+button.danger:hover {
+  background-color: #d32f2f; /* Darker red */
+  transform: translateY(-1px);
+}
+
+button:disabled {
+  background-color: #bdbdbd;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Forms */
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+label {
+  font-weight: bold;
+  margin-bottom: 5px;
+  display: block;
+  color: var(--primary-dark-color);
+}
+
+input[type="text"],
+textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  font-size: 1rem;
+  box-sizing: border-box; /* Include padding and border in the element's total width and height */
+  font-family: var(--font-family);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+input[type="text"]:focus,
+textarea:focus {
+  border-color: var(--primary-color);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(63, 81, 181, 0.2);
+}
+
+textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+/* Note List */
+.note-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.note-item {
+  background-color: var(--card-background);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 20px;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+}
+
+.note-item:hover {
+  box-shadow: 0 6px 16px var(--shadow-color);
+  transform: translateY(-2px);
+}
+
+.note-item h3 {
+  margin-bottom: 5px;
+  color: var(--primary-color);
+  font-size: 1.25rem;
+  word-break: break-word;
+}
+
+.note-item p {
+  font-size: 0.95rem;
+  color: #666;
+  margin-bottom: 10px;
+  flex-grow: 1; /* Allow body to take available space */
+  display: -webkit-box;
+  -webkit-line-clamp: 3; /* Limit to 3 lines */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.note-item .note-date {
+  font-size: 0.85rem;
+  color: #888;
+  text-align: right;
+  margin-top: auto; /* Push to the bottom */
+}
+
+/* Note Detail */
+.note-detail-container {
+  padding: 20px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background-color: var(--card-background);
+  box-shadow: 0 2px 8px var(--shadow-color);
+}
+
+.note-detail-container h2 {
+  font-size: 1.8rem;
+  color: var(--primary-dark-color);
+  margin-bottom: 15px;
+  word-break: break-word;
+}
+
+.note-detail-container p {
+  font-size: 1.1rem;
+  margin-bottom: 15px;
+  white-space: pre-wrap; /* Preserve whitespace and breaks */
+}
+
+.note-detail-container .note-meta {
+  font-size: 0.9rem;
+  color: #777;
+  border-top: 1px solid var(--border-color);
+  padding-top: 10px;
+  margin-top: 20px;
+}
+
+.note-detail-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+  justify-content: flex-start;
+}
+
+/* General Layout */
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 25px;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 15px;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 2.2rem;
+  color: var(--primary-dark-color);
+}
+
+.header-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+/* Utility classes */
+.text-center {
+  text-align: center;
+}
+
+.message-info {
+  background-color: #e3f2fd; /* Light blue */
+  color: #1976d2; /* Darker blue */
+  padding: 15px;
+  border-radius: 5px;
+  margin-bottom: 20px;
+  border: 1px solid #90caf9;
+}
+
+.message-error {
+  background-color: #ffebee; /* Light red */
+  color: #d32f2f; /* Darker red */
+  padding: 15px;
+  border-radius: 5px;
+  margin-bottom: 20px;
+  border: 1px solid #ef9a9a;
+}

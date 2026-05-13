@@ -1,0 +1,50 @@
+[
+  {
+    "content": "Phase 1.0: Integration playbook for Gemini (direct API + Emergent fallback)",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 1.1: Get Emergent Universal LLM key",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 1.2: Set up workspace dir + backend env vars + install deps",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 1.3: Implement engines (llm_gateway, build_engine, repair_engine, export_engine, snapshot_engine)",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 1.4: Write test_core.py POC (notes app full-stack generation + build + repair + export)",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 1.5: Run POC and fix until PASS (frontend dist/ + backend imports + clean ZIP)",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 2.0: Design pass for orchestrator cockpit UI",
+    "status": "in_progress"
+  },
+  {
+    "content": "Phase 2.1: Backend - Mongo models + repos + state machine + all engines integration",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 2.2: Backend - API routes (projects, BRD, architecture, plan, generate, files, build, acceptance, export) + SSE event ledger",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 2.3: Frontend - cockpit shell + routing + API client + SSE hook",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 2.4: Frontend - 10 pages (Dashboard, NewProject, Cockpit, BRD, Architecture, Plan, Files, Build, Acceptance, Export)",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 2.5: End-to-end testing via testing_agent_v3 covering all 10 user stories",
+    "status": "pending"
+  }
+]
