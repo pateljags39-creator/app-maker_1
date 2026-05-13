@@ -47,6 +47,27 @@ export const api = {
   latestExport: (id) => client.get(`/projects/${id}/export`).then(r => r.data),
   exportManifest: (id) => client.get(`/projects/${id}/export/manifest`).then(r => r.data),
   exportDownloadUrl: (id) => `${API_BASE}/projects/${id}/export/download`,
+  // Robust blob download (works cross-origin, bypasses anchor `download` quirks).
+  downloadExportZip: async (id, filename) => {
+    const r = await client.get(`/projects/${id}/export/download`, { responseType: 'blob' });
+    const blob = new Blob([r.data], { type: 'application/zip' });
+    // Try to extract filename from Content-Disposition; fall back to provided name.
+    const cd = r.headers?.['content-disposition'] || r.headers?.['Content-Disposition'] || '';
+    let name = filename || `project-${id}.zip`;
+    const m = cd.match(/filename\*?=(?:UTF-\d''|")?([^";\n]+)/i);
+    if (m) {
+      try { name = decodeURIComponent(m[1].replace(/^"|"$/g, '')); } catch { /* keep fallback */ }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return { filename: name, size: blob.size };
+  },
   // constraints (bounded customization)
   getConstraints: (id) => client.get(`/projects/${id}/constraints`).then(r => r.data),
   putConstraints: (id, constraints) => client.put(`/projects/${id}/constraints`, { constraints }).then(r => r.data),

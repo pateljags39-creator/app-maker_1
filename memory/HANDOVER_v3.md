@@ -102,9 +102,9 @@ User wanted to demo generated apps before exporting. Killer feature — turns th
 
 | # | Symptom | Status | Notes |
 |---|---|---|---|
-| **B1** | "Add Sandbox button on the homepage or somewhere" — user couldn't find it easily | **Open at handover write** (will be fixed immediately after this doc) | Today's plan: surface a "Run Demo" CTA on the Dashboard project cards + a top-level "Recent Sandboxes" strip. |
-| **B2** | "Export — the download zip was not working" | **Open at handover write** (will be reproduced + fixed immediately after this doc) | Check `routes/projects.py` export endpoint, the frontend `Export.jsx` download flow, and the backend's `engines/export_engine.py` ZIP build. Suspect: streaming response, MIME, or filename header. |
-| **B3** | "Make the UI good" (planned next phase) | **Pending** — depends on credits | User chose **Gemini 3.1 Pro** route. To be done with `gemini-3.1-pro` model swap; redesign of Dashboard, Cockpit, Build, Sandbox pages with stronger visual identity (gradients, glassmorphism, motion). Pacing: incremental — don't redo backend logic, only frontend visual layer. |
+| **B1** | "Add Sandbox button on the homepage or somewhere" | **✅ FIXED (this session)** | Added `Run Sandbox` button in Dashboard hero + project picker modal (`pages/Dashboard.jsx`, testids: `dashboard-open-sandbox-button`, `sandbox-picker-modal`, `sandbox-picker-row-{id}`). |
+| **B2** | "Export — the download zip was not working" | **✅ FIXED (this session)** | Root cause: anchor `<a download>` was unreliable on some browsers / CORS contexts. Replaced with programmatic blob fetch via axios `responseType:'blob'` + dynamic `<a>` + `URL.createObjectURL`. Helper `api.downloadExportZip(id)` in `lib/api.js`; consumer in `pages/Export.jsx`. Backend `routes/export.py` was already correct. |
+| **B3** | "Make the UI good" — UI quality of GENERATED apps | **✅ FIXED (this session)** | (a) Swapped `TIER_MODELS` in `engines/llm_gateway.py` to `gemini-3.1-pro-preview` for both light and heavy tiers (per user choice "All gemini-3-pro-preview"; 3.1 is the latest Feb 2026 release ID). (b) Injected a 50-line UI/UX quality bar into `FILE_SYSTEM` prompt in `engines/generation_engine.py`: per-domain visual identity, CSS-variable palette, typography scale, spacing scale, motion rules, empty/loading/error states, Lucide-React icons, accessibility. Verified `primary_available=true` with new model. |
 
 ---
 

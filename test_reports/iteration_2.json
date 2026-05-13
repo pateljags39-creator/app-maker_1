@@ -1,0 +1,62 @@
+{
+  "summary": "Verified the iteration-2 fixes: (1) Export 'Download ZIP' now triggers a real browser download via blob; (2) Dashboard exposes 'Run Sandbox' with a working picker modal; (3) Health endpoint reports gemini-3.1-pro-preview for both light and heavy tiers. 4/5 new backend tests pass; existing unit tests pass (recovery_engine tests are skipped/failing due to pre-existing pytest-asyncio + motor loop issue, unrelated to this iteration). Sandbox HTTP start fails for project 0959641870d5 because the spawned subprocess resolves PATH 'python' to /usr/local/bin/python which lacks uvicorn — this is a pre-existing environment bug, not new in this iteration.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/projects/0959641870d5/sandbox/start",
+        "issue": "Returns 409 backend_did_not_open_port: '/usr/local/bin/python: No module named uvicorn'. sandbox_engine.py spawns `python -m uvicorn` with the inherited PATH, which resolves to /usr/local/bin/python (no uvicorn) instead of the cockpit's /root/.venv/bin/python. Fix: hard-code sys.executable or invoke `/root/.venv/bin/python` (or create a per-project venv) when launching the generated backend.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "Content-Disposition on /api/projects/{id}/export/download",
+        "issue": "Header uses ONLY RFC 5987 `filename*=utf-8''...` form (no plain `filename=` fallback). Most modern browsers handle this fine (download succeeded in Chromium), but older clients/curl scripts may not parse it. Consider emitting both `filename=` and `filename*=` for max compatibility."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "GET /api/system/health → primary_available=true, model=gemini-3.1-pro-preview, tier_models.light=tier_models.heavy=gemini-3.1-pro-preview",
+    "GET /api/projects/0959641870d5/export/download via external REACT_APP_BACKEND_URL → 200, application/zip, attachment Content-Disposition, valid ZIP with entries",
+    "GET /api/projects/0959641870d5/export/download via localhost:8001 → 200, valid ZIP",
+    "GET /api/projects/0959641870d5/export → returns export metadata (files=21, size_bytes=214345, sha256 present)",
+    "Existing high1/high2/high345/medium1 unit tests → all pass (22 passed)",
+    "Dashboard renders [data-testid='dashboard-open-sandbox-button'] in hero alongside 'New Project'",
+    "Clicking Run Sandbox opens [data-testid='sandbox-picker-modal']; lists all projects with row testids sandbox-picker-row-{id}",
+    "[data-testid='sandbox-picker-search'] filters the row list (typed '0959641870d5' → 1 row)",
+    "Selecting a project row navigates to /projects/{id}/sandbox",
+    "On /projects/0959641870d5/export, clicking Create export then Download ZIP fires a real browser `download` event; saved file is a valid 54899-byte ZIP with 21 entries; button reverts from 'Downloading…' to 'Download ZIP'; success toast 'Downloaded calc test 2-…zip' appears",
+    "Header LLM pill shows 'gemini-3.1-pro-preview'"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_export_download_and_sandbox.py",
+    "/app/test_reports/pytest/export_sandbox_results.xml"
+  ],
+  "action_items": [
+    "HIGH: Fix sandbox_engine.py to launch the generated backend with sys.executable (or /root/.venv/bin/python) instead of relying on PATH 'python'. Right now /usr/local/bin/python wins and has no uvicorn, so sandbox/start always returns 409 for any project — including the requested 0959641870d5 e2e check.",
+    "LOW: Emit both plain `filename=` and `filename*=utf-8''…` in Content-Disposition for older HTTP clients.",
+    "LOW (pre-existing test infra): tests/test_recovery_engine.py needs pytest-asyncio with proper loop scope; currently 3/4 cases fail with 'Event loop is closed' from motor due to per-test loop tearing. Add a session-scoped event_loop fixture or use pytest-asyncio mode=auto with loop_scope='session'."
+  ],
+  "critical_code_review_comments": [
+    "engines/sandbox_engine.py line ~126 uses bare 'python' on PATH for the subprocess. This is fragile in any environment where the venv binary isn't on PATH. Use sys.executable.",
+    "TIER_MODELS in engines/llm_gateway.py now points BOTH light and heavy to gemini-3.1-pro-preview. The docstring/comments still mention 2.5-flash / 2.5-pro tier split — update or remove the misleading comments so future maintainers don't think tier routing differentiates models.",
+    "lib/api.js downloadExportZip regex `/filename\\*?=(?:UTF-\\d''|\")?([^\";\\n]+)/i` will fail to strip the RFC 5987 charset prefix correctly when the form is `filename*=utf-8''…` (lowercase 'utf'). It still works because the fallback `project-${id}.zip` is overridden by Content-Disposition matching; verified the resulting saved filename `calc test 2-1778712845.zip` is correct, so this is informational."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_export_download_and_sandbox.py (new)"
+  ],
+  "success_rate": {
+    "backend": "80% (4/5 new tests pass; existing 22 unit tests pass; 1 sandbox start regression)",
+    "frontend": "100% (Run Sandbox modal, picker filter, navigation, Export blob download, success toast all verified)"
+  },
+  "seed_data_creation": "None — used existing project 0959641870d5 ('calc test 2') and re-used its existing built workspace and export ZIP as instructed.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Use project id 0959641870d5 (name 'calc test 2'). It has a workspace at /app/workspace/projects/0959641870d5 with backend/frontend built and an existing export. After fixing sandbox_engine to use sys.executable, re-run /app/backend/tests/test_export_download_and_sandbox.py — the 4 passing tests should remain green and test_sandbox_start_status_proxy should also pass. Frontend public URL: https://local-app-builder-4.preview.emergentagent.com",
+  "rca_of_the_issue": "Sandbox/start 409 root cause: subprocess.Popen(['python','-m','uvicorn',...]) in /app/backend/engines/sandbox_engine.py:125 relies on PATH lookup. In the supervisor-managed environment the parent backend was launched as /root/.venv/bin/uvicorn (via supervisor command), so PATH does not include /root/.venv/bin and `python` resolves to /usr/local/bin/python (no uvicorn). The captured log file confirms `/usr/local/bin/python: No module named uvicorn`. Repro: `curl -X POST $REACT_APP_BACKEND_URL/api/projects/0959641870d5/sandbox/start -H 'content-type: application/json' -d '{}'` → 409. Mitigation: replace `'python'` with `sys.executable` (or detect the cockpit's venv binary) in sandbox_engine.start()."
+}

@@ -10,6 +10,7 @@ export default function ExportPage() {
   const [doc, setDoc] = useState(null);
   const [manifest, setManifest] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const load = async () => {
     const r = await api.latestExport(project.id);
@@ -51,12 +52,20 @@ export default function ExportPage() {
             <Package className="h-3.5 w-3.5" /> Create export
           </button>
           {exp && (
-            <a
-              href={api.exportDownloadUrl(project.id)}
+            <button
+              onClick={async () => {
+                try {
+                  setDownloading(true);
+                  const out = await api.downloadExportZip(project.id);
+                  toast.success(`Downloaded ${out.filename}`);
+                } catch (e) {
+                  toast.error(e?.response?.data?.detail || e?.message || 'Download failed');
+                } finally { setDownloading(false); }
+              }}
+              disabled={downloading}
               data-testid="export-download-link"
-              className="inline-flex items-center gap-2 rounded-md bg-secondary border border-border text-secondary-foreground px-3 py-1.5 text-xs font-medium hover:bg-accent"
-              download
-            ><DownloadCloud className="h-3.5 w-3.5" /> Download ZIP</a>
+              className="inline-flex items-center gap-2 rounded-md bg-secondary border border-border text-secondary-foreground px-3 py-1.5 text-xs font-medium hover:bg-accent disabled:opacity-50"
+            ><DownloadCloud className="h-3.5 w-3.5" /> {downloading ? 'Downloading…' : 'Download ZIP'}</button>
           )}
         </div>
       </div>

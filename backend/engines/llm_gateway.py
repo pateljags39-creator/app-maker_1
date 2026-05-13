@@ -176,8 +176,8 @@ def _try_recover_truncated_json(raw: str) -> Any | None:
 #
 # Per-call override is supported via complete(..., tier=..., model=...).
 TIER_MODELS: dict[str, str] = {
-    "light": "gemini-2.5-flash",
-    "heavy": "gemini-2.5-pro",
+    "light": "gemini-3.1-pro-preview",
+    "heavy": "gemini-3.1-pro-preview",
 }
 DEFAULT_TIER = "light"
 
@@ -196,7 +196,7 @@ class LLMGateway:
         self,
         gemini_api_key: str | None = None,
         emergent_key: str | None = None,
-        model: str = "gemini-2.5-flash",
+        model: str = "gemini-3.1-pro-preview",
     ) -> None:
         self.gemini_api_key = gemini_api_key or os.environ.get("GEMINI_API_KEY")
         self.emergent_key = emergent_key or os.environ.get("EMERGENT_LLM_KEY")

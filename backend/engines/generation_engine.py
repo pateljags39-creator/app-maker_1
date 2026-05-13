@@ -85,6 +85,45 @@ BACKEND IMPORT RULES (CRITICAL):
 - backend/requirements.txt: pin reasonable versions; include fastapi, uvicorn[standard], sqlalchemy>=2, pydantic>=2, python-multipart.
 - README.md must include: prerequisites, frontend run, backend run, ports, env.
 
+FRONTEND UI/UX QUALITY BAR (CRITICAL — generated apps MUST look modern, not generic):
+The frontend you produce is the user's first impression. Generic Bootstrap-looking output is unacceptable.
+Pick ONE coherent visual identity per app and commit to it across every page. The default direction
+is **modern minimalist** (clean typography, generous whitespace, restrained color, Linear/Vercel feel)
+— but you SHOULD adapt the palette and accents to the app's domain. Examples:
+  * Finance/calculator/dashboard  → neutral charcoal + a single accent (emerald/indigo/amber)
+  * Notes/writing/journal         → warm off-white background + serif headings + ink-color body
+  * Tasks/todo/project mgmt       → cool slate background + crisp sans-serif + accent for action
+  * Fitness/social/wellness       → bold accent gradient on a near-black or near-white canvas
+  * Internal tools                → dense tabular layout, mono accents, no decorative imagery
+Make the choice consistent. Do NOT mix generic templates.
+
+Concrete rules every generated frontend MUST follow:
+1. CSS: use a single `frontend/src/styles.css` with CSS variables for the palette:
+     `:root { --bg, --surface, --surface-elev, --text, --text-muted, --border, --accent, --accent-fg, --danger }`
+   Define a sensible light scheme by default; add a `.dark` class override if dark mode fits the app.
+2. Typography: ONE display font + ONE body font. Pull from system fonts or a single Google Fonts link in
+   `index.html`. Avoid Arial/Times defaults. Use a clear scale (e.g. 12 / 14 / 16 / 20 / 28 / 40px),
+   `letter-spacing` tightened on headings, `line-height` 1.5+ on body.
+3. Spacing: use a consistent scale (4/8/12/16/24/32/48). Never use raw 5px/13px. Generous padding inside cards.
+4. Layout: max-width container (~960–1200px) centered on desktop; full-width on mobile. Sticky/translucent
+   top bar with backdrop-blur (`backdrop-filter: blur(12px)` + semi-transparent background). Avoid centered
+   "everything in the middle" layouts — prefer left-aligned content + asymmetric two-column where useful.
+5. Components: form inputs and buttons must share a rounded radius (8–12px), 1px subtle border, focus ring
+   in the accent color (`box-shadow: 0 0 0 3px hsl(var(--accent)/0.25)`). Primary button uses accent bg;
+   secondary uses surface + border. Disabled state shows opacity 0.55, no pointer.
+6. Motion: subtle, fast (150–220ms `cubic-bezier(.2,.8,.2,1)`). Apply to specific properties only
+   (`transition: background-color 180ms, transform 180ms`) — never `transition: all`. Hover lifts cards
+   `translateY(-2px)` + a 2px accent shadow.
+7. Empty/loading/error states: never blank. Empty state shows a one-line message + a primary CTA. Loading
+   uses a 1.2s pulse on skeleton boxes. Errors use the `--danger` color and surface the message inline.
+8. Tailwind: optional. If you use it, also keep the CSS-variable palette in `styles.css` and reference it
+   via `bg-[hsl(var(--surface))]` patterns so the theme stays single-sourced.
+9. Icons: prefer Lucide React (`npm i lucide-react`) for any iconography. NEVER use emoji as icons. If you
+   need decorative iconography only, inline SVG is fine.
+10. Accessibility: every interactive element has a visible focus state, label, and reasonable color contrast.
+    Form inputs have associated labels (or `aria-label`).
+11. data-testid: every button, link, input, modal, and key info display gets a `data-testid="kebab-name"`.
+
 NO secrets in any file. NEVER reference Gemini/Emergent keys.
 """
 
