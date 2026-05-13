@@ -147,6 +147,7 @@ async def _ask_patch(
                 json_mode=True,
                 temperature=0.0,
                 max_output_tokens=8000,
+                tier="heavy",  # patch synthesis must reason about file+error+tree -> gemini-2.5-pro
             )
             obj = resp.as_json()
             if isinstance(obj, dict):

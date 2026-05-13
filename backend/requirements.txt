@@ -84,9 +84,12 @@ pyasn1==0.6.3
 pyasn1_modules==0.4.2
 pycodestyle==2.14.0
 pycparser==3.0
-pydantic==2.7.1
-pydantic-settings==2.2.1
-pydantic_core==2.18.2
+# Bumped to satisfy google-genai>=2.0 (needs pydantic>=2.9). 2.13.x is the
+# actual runtime version and is what production has been running on.
+pydantic>=2.10,<3
+pydantic-settings>=2.4,<3
+# pydantic_core is pulled in by pydantic itself; do not pin separately or we
+# break pip resolution against the bumped pydantic above.
 pyflakes==3.4.0
 Pygments==2.20.0
 PyJWT==2.12.1

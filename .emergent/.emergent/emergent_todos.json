@@ -1,0 +1,18 @@
+[
+  {
+    "content": "Fix: one-click \"Generate App\" backend endpoint that chains architecture-detect → plan → generate",
+    "status": "in_progress"
+  },
+  {
+    "content": "Fix: BRD page shows prominent \"Generate App\" CTA once maturity ≥ 50",
+    "status": "pending"
+  },
+  {
+    "content": "Fix: Cockpit \"Run pipeline\" disabled logic + add state-aware next-action CTA",
+    "status": "pending"
+  },
+  {
+    "content": "Verify the Scientific Calculator project can finish end-to-end with one click",
+    "status": "pending"
+  }
+]

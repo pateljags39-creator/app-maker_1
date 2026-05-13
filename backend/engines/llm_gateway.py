@@ -165,9 +165,32 @@ def _try_recover_truncated_json(raw: str) -> Any | None:
     return None
 
 
+# ---------- Model tier routing ----------
+# The user explicitly asked: "use flash for small fixes and 2.5 pro for major
+# tasks. Try to do in less calls as there is rate per min limit."
+#
+# Light  = high-volume, narrow-scope calls (BRD questions, per-file generation,
+#          architecture classification hints, repair triage).
+# Heavy  = single-shot, holistic reasoning (BRD derive, full project plan,
+#          repair patch synthesis).
+#
+# Per-call override is supported via complete(..., tier=..., model=...).
+TIER_MODELS: dict[str, str] = {
+    "light": "gemini-2.5-flash",
+    "heavy": "gemini-2.5-pro",
+}
+DEFAULT_TIER = "light"
+
+
 # ---------- Gateway ----------
 class LLMGateway:
-    """Primary direct-Gemini, fallback Emergent universal key."""
+    """Primary direct-Gemini, fallback Emergent universal key.
+
+    Supports a `tier` parameter on each call so that holistic / high-stakes
+    reasoning steps (plan, BRD derive, repair synthesis) are routed to
+    gemini-2.5-pro while high-volume small-scope steps stay on
+    gemini-2.5-flash (cheaper, higher RPM).
+    """
 
     def __init__(
         self,
@@ -193,6 +216,15 @@ class LLMGateway:
                 "No LLM provider available: configure GEMINI_API_KEY and/or EMERGENT_LLM_KEY."
             )
 
+    def _resolve_model(self, tier: str | None, model: str | None) -> str:
+        """Pick the effective model for this call.
+        Explicit `model=` wins, then `tier=`, else the default constructor model."""
+        if model:
+            return model
+        if tier and tier in TIER_MODELS:
+            return TIER_MODELS[tier]
+        return self.model
+
     # --- public ---
     async def complete(
         self,
@@ -202,8 +234,17 @@ class LLMGateway:
         json_mode: bool = False,
         temperature: float = 0.2,
         max_output_tokens: int = 8192,
+        tier: str | None = None,
+        model: str | None = None,
     ) -> LLMResponse:
-        """Try primary, fall back on quota/auth/quota errors."""
+        """Try primary, fall back on quota/auth/quota errors.
+
+        Per-call routing:
+            tier="light"  -> gemini-2.5-flash (default)
+            tier="heavy"  -> gemini-2.5-pro
+        `model=` overrides both.
+        """
+        effective_model = self._resolve_model(tier, model)
         # Try direct Gemini first if available and not previously disabled
         if self._direct_client and not self._primary_disabled:
             try:
@@ -212,6 +253,7 @@ class LLMGateway:
                     json_mode=json_mode,
                     temperature=temperature,
                     max_output_tokens=max_output_tokens,
+                    model_override=effective_model,
                 )
             except QuotaExhaustedError as e:
                 logger.warning("Primary Gemini quota exhausted, switching to fallback. Reason=%s", str(e)[:120])
@@ -227,6 +269,7 @@ class LLMGateway:
                 json_mode=json_mode,
                 temperature=temperature,
                 max_output_tokens=max_output_tokens,
+                model_override=effective_model,
             )
 
         raise AllProvidersExhaustedError(
@@ -242,8 +285,10 @@ class LLMGateway:
         json_mode: bool,
         temperature: float,
         max_output_tokens: int,
+        model_override: str | None = None,
     ) -> LLMResponse:
         assert self._direct_client is not None
+        effective_model = model_override or self.model
         cfg_kwargs: dict[str, Any] = {
             "temperature": temperature,
             "max_output_tokens": max_output_tokens,
@@ -254,7 +299,7 @@ class LLMGateway:
 
         def _call() -> Any:
             return self._direct_client.models.generate_content(
-                model=self.model,
+                model=effective_model,
                 contents=user,
                 config=google_genai_types.GenerateContentConfig(**cfg_kwargs),
             )
@@ -289,7 +334,7 @@ class LLMGateway:
                 "output": int(getattr(usage, "candidates_token_count", 0) or 0),
             }
 
-        return LLMResponse(text=text, provider="gemini_direct", model=self.model, tokens=tokens)
+        return LLMResponse(text=text, provider="gemini_direct", model=effective_model, tokens=tokens)
 
     async def _complete_emergent(
         self,
@@ -299,7 +344,9 @@ class LLMGateway:
         json_mode: bool,
         temperature: float,
         max_output_tokens: int,
+        model_override: str | None = None,
     ) -> LLMResponse:
+        effective_model = model_override or self.model
         # emergentintegrations chat: stateful, but we use fresh session per call to keep stateless behaviour.
         sysmsg = system
         if json_mode:
@@ -311,7 +358,7 @@ class LLMGateway:
             api_key=self.emergent_key,
             session_id=f"lac-{uuid.uuid4().hex[:12]}",
             system_message=sysmsg,
-        ).with_model("gemini", self.model)
+        ).with_model("gemini", effective_model)
         msg = UserMessage(text=user)
         try:
             text = await chat.send_message(msg)
@@ -322,7 +369,7 @@ class LLMGateway:
             raise LLMError(f"emergent_gemini_error: {type(e).__name__}") from e
         if not text:
             raise LLMError("emergent_gemini empty response")
-        return LLMResponse(text=text, provider="emergent_gemini", model=self.model)
+        return LLMResponse(text=text, provider="emergent_gemini", model=effective_model)
 
     # --- introspection (safe, no secrets) ---
     def status(self) -> dict[str, Any]:
@@ -331,4 +378,6 @@ class LLMGateway:
             "primary_disabled_quota": self._primary_disabled,
             "fallback_available": bool(self.emergent_key and _HAS_EMERGENT),
             "model": self.model,
+            "tier_models": dict(TIER_MODELS),
+            "default_tier": DEFAULT_TIER,
         }

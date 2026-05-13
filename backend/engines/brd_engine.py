@@ -95,6 +95,7 @@ async def derive_brd(
     resp = await gateway.complete(
         system=BRD_SYSTEM, user=user, json_mode=True,
         temperature=0.15, max_output_tokens=5000,
+        tier="heavy",  # holistic reasoning over QA pairs -> route to gemini-2.5-pro
     )
     brd = resp.as_json()
     if not isinstance(brd, dict):

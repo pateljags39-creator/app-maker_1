@@ -113,6 +113,7 @@ async def generate_plan(
         json_mode=True,
         temperature=0.1,
         max_output_tokens=6000,
+        tier="heavy",  # whole-project planning -> route to gemini-2.5-pro
     )
     plan = resp.as_json()
     if not isinstance(plan, dict) or "files" not in plan:
