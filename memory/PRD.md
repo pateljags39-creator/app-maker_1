@@ -83,6 +83,33 @@ Full architecture audit at `/app/memory/AUDIT.md` (last updated 2026-02-13).
 - `/app/test_reports/iteration_1.json` — Phase 2 testing agent report
 
 ## Recent changelog
+- **2026-05-13 (continuation pass · part B — Live Sandbox / Demo)**:
+  - **NEW: Sandbox feature shipped — generated apps run live inside the cockpit.**
+    New engine `engines/sandbox_engine.py` (SandboxRegistry: spawn/stop/idle-reap/
+    LRU-evict; max 3 concurrent; auto-stop after 15 min idle; cleans up on
+    cockpit shutdown). New routes `routes/sandbox.py` mounted under `/api`:
+      - `POST /api/projects/{id}/sandbox/start` — spawns
+        `python -m uvicorn main:app --port <dynamic>` in `workspace/{id}/backend`;
+        verifies port opens within 10s; emits `sandbox.started` event.
+      - `POST /api/projects/{id}/sandbox/stop` — SIGTERM, frees port.
+      - `GET  /api/projects/{id}/sandbox/status` — alive/port/last_used/etc.
+      - `GET  /api/projects/{id}/sandbox/logs` — tail of uvicorn stdout/stderr.
+      - `ANY  /api/sandbox/{id}/{path:path}` — catch-all: if `path` starts with
+        `api/`, proxy via `httpx.AsyncClient` to the spawned backend on
+        127.0.0.1; otherwise serve the file from `frontend/dist/` with HTML
+        rewriting (`<base href="/api/sandbox/{id}/">` injection, absolute
+        `/assets/...` → relative `assets/...`) and universal text rewriting
+        (`'/api/'` → `'/api/sandbox/{id}/api/'`) so the existing generated
+        frontend works inside the sandbox URL prefix without recompilation.
+    Frontend: new `pages/Sandbox.jsx` (iframe host + start/stop/reload buttons,
+    log viewer, status + idle countdown), wired into `App.js` routes and the
+    project sidebar (`Sparkles` icon, label "Sandbox"). Cockpit landing page
+    also gets a prominent "Sandbox · Run Demo" link card.
+    **Live UI-tested end-to-end:** all 10 test steps passed on the calculator
+    workspace — iframe loads the rendered Web Calculator Pro app, the cockpit
+    proxies 22 API calls with 0 failures, logs stream correctly, lifecycle
+    (start/stop/reload) all clean.
+
 - **2026-05-13 (continuation pass — user-reported "calculator made a mess" bug)**:
   - **HIGH-2 fixed — Stale package-lock.json broke builds.** `npm ci` was used
     whenever `package-lock.json` existed; the deterministic deps-fixup updates
