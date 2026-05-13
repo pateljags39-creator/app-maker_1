@@ -47,6 +47,14 @@ export const api = {
   latestExport: (id) => client.get(`/projects/${id}/export`).then(r => r.data),
   exportManifest: (id) => client.get(`/projects/${id}/export/manifest`).then(r => r.data),
   exportDownloadUrl: (id) => `${API_BASE}/projects/${id}/export/download`,
+  // constraints (bounded customization)
+  getConstraints: (id) => client.get(`/projects/${id}/constraints`).then(r => r.data),
+  putConstraints: (id, constraints) => client.put(`/projects/${id}/constraints`, { constraints }).then(r => r.data),
+  resetConstraints: (id) => client.post(`/projects/${id}/constraints/reset`).then(r => r.data),
+  // improve / fix
+  requestImprove: (id, change_request) => client.post(`/projects/${id}/improve`, { change_request }, { timeout: 180000 }).then(r => r.data),
+  listImproves: (id) => client.get(`/projects/${id}/improve`).then(r => r.data),
+  getImprove: (id, attemptId) => client.get(`/projects/${id}/improve/${attemptId}`).then(r => r.data),
   // events
   listEvents: (id, limit = 50) => client.get(`/projects/${id}/events`, { params: { limit } }).then(r => r.data),
   eventsStreamUrl: (id) => `${API_BASE}/projects/${id}/events/stream`,

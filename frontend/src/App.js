@@ -12,6 +12,8 @@ import FilesPage from '@/pages/Files';
 import BuildPage from '@/pages/Build';
 import AcceptancePage from '@/pages/Acceptance';
 import ExportPage from '@/pages/Export';
+import ImprovePage from '@/pages/Improve';
+import ConstraintsPage from '@/pages/Constraints';
 import useProject from '@/lib/useProject';
 import '@/App.css';
 
@@ -74,6 +76,8 @@ function App() {
             <Route path="files" element={<FilesPage />} />
             <Route path="build" element={<BuildPage />} />
             <Route path="acceptance" element={<AcceptancePage />} />
+            <Route path="improve" element={<ImprovePage />} />
+            <Route path="constraints" element={<ConstraintsPage />} />
             <Route path="export" element={<ExportPage />} />
           </Route>
           <Route path="*" element={<NotFound />} />

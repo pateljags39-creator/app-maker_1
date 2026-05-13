@@ -47,6 +47,8 @@ async def delete_project(project_id: str) -> int:
     await db.acceptance.delete_many({"project_id": project_id})
     await db.exports.delete_many({"project_id": project_id})
     await db.events.delete_many({"project_id": project_id})
+    await db.constraints.delete_many({"project_id": project_id})
+    await db.improve_attempts.delete_many({"project_id": project_id})
     return res.deleted_count
 
 
@@ -132,3 +134,56 @@ async def add_export(project_id: str, export: dict) -> dict:
 async def latest_export(project_id: str) -> dict | None:
     db = get_db()
     return await db.exports.find_one({"project_id": project_id}, {"_id": 0}, sort=[("created_at", -1)])
+
+
+# ---------- Constraints (per-project bounded customization) ----------
+async def get_constraints(project_id: str) -> dict | None:
+    db = get_db()
+    doc = await db.constraints.find_one({"project_id": project_id}, {"_id": 0})
+    if not doc:
+        return None
+    return doc.get("constraints") or doc  # backward-compat
+
+
+async def set_constraints(project_id: str, constraints: dict) -> dict:
+    db = get_db()
+    body = {
+        "project_id": project_id,
+        "constraints": constraints,
+        "updated_at": now(),
+    }
+    await db.constraints.update_one(
+        {"project_id": project_id}, {"$set": body}, upsert=True
+    )
+    return constraints
+
+
+# ---------- Improve attempts ----------
+async def add_improve_attempt(project_id: str, attempt: dict) -> dict:
+    db = get_db()
+    doc = {
+        "project_id": project_id,
+        "attempt_id": attempt.get("id"),
+        "attempt": attempt,
+        "status": attempt.get("status"),
+        "created_at": attempt.get("created_at") or now(),
+    }
+    await db.improve_attempts.insert_one(doc)
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+
+async def list_improve_attempts(project_id: str, limit: int = 30) -> list[dict]:
+    db = get_db()
+    cur = (
+        db.improve_attempts.find({"project_id": project_id}, {"_id": 0})
+        .sort("created_at", -1)
+        .limit(limit)
+    )
+    return [d async for d in cur]
+
+
+async def get_improve_attempt(project_id: str, attempt_id: str) -> dict | None:
+    db = get_db()
+    return await db.improve_attempts.find_one(
+        {"project_id": project_id, "attempt_id": attempt_id}, {"_id": 0}
+    )

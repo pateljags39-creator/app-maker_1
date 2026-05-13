@@ -179,6 +179,7 @@ async def attempt_repairs(
     gateway: LLMGateway,
     max_retries: int = 2,
     initial_build: BuildRecord | None = None,
+    constraints: dict | None = None,
 ) -> tuple[BuildRecord, RepairOutcome]:
     workspace = Path(workspace)
     outcome = RepairOutcome(final_status="FAIL")
@@ -233,6 +234,42 @@ async def attempt_repairs(
                 note=f"llm_skip: {patch.get('rationale','no rationale')}",
             ))
             break
+
+        # ----- bounded-customization gate (Phase 3b) -----
+        # Convert the repair patch to a manifest shape and validate it against
+        # the project's constraints. On violation, skip this attempt entirely
+        # (we never silently apply over-budget repairs).
+        if constraints:
+            from .constraints import validate_change as _validate_change
+            manifest_files = []
+            if patch.get("file_path"):
+                manifest_files.append({
+                    "path": patch["file_path"],
+                    "action": "replace",
+                    "new_content": patch.get("new_content", ""),
+                })
+            for af in patch.get("additional_files") or []:
+                if af.get("file_path"):
+                    manifest_files.append({
+                        "path": af["file_path"],
+                        "action": "replace",
+                        "new_content": af.get("new_content", ""),
+                    })
+            manifest = {
+                "files": manifest_files,
+                "add_npm_deps": patch.get("add_npm_deps") or [],
+                "add_pip_deps": patch.get("add_pip_deps") or [],
+            }
+            ok_c, violations_c, _stats = _validate_change(workspace, manifest, constraints)
+            if not ok_c:
+                outcome.attempts.append(RepairAttempt(
+                    attempt=attempt, started_at=started, finished_at=time.time(),
+                    classification=classification, target_file=target_rel or "",
+                    target_step=failed_step.name, error_excerpt=err_text[-500:],
+                    patch_applied=False, build_after=build.overall_status,
+                    note=f"rejected_by_constraints: {'; '.join(violations_c)[:240]}",
+                ))
+                break
 
         applied: list[tuple[Path, str | None]] = []  # (path, prev_content)
         try:

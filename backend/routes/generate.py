@@ -122,7 +122,11 @@ async def _run_pipeline(project_id: str, auto_prepare: bool = False) -> None:
         if build.overall_status != "PASS":
             await repo.set_state(project_id, "Repair")
             await led.emit_simple(project_id, "repair.started", "Attempting safe repairs", severity="warning")
-            build, outcome = await attempt_repairs(workspace, project_id, gw, max_retries=2, initial_build=build)
+            constraints = await repo.get_constraints(project_id)
+            build, outcome = await attempt_repairs(
+                workspace, project_id, gw, max_retries=2,
+                initial_build=build, constraints=constraints,
+            )
             repair_dict = outcome.to_dict()
             for attempt in outcome.attempts:
                 await led.emit_simple(project_id, "repair.attempt",

@@ -225,7 +225,7 @@ new dashboard CTA.
 
 ---
 
-## 5. Highest-Impact Improvements Already Applied (this pass)
+## 5. Highest-Impact Improvements Already Applied
 
 1. **`requirements.txt` install-blocker fixed** (CRITICAL-1).
 2. **Hybrid Gemini tier routing** wired into the LLM gateway (CRITICAL-2):
@@ -236,8 +236,48 @@ new dashboard CTA.
 3. **`/api/system/health` now exposes** `tier_models` + `default_tier` so the
    cockpit / smoke tests can verify wiring without LLM calls.
 
+### Phase 3 — landed in same pass (user request: "do a and b")
+
+4. **Phase 3b — Bounded-customization constraints registry**
+   - `engines/constraints.py` — `ProjectConstraints` dataclass + `validate_change()`
+     with hard rules (forbidden paths, secret regex, no-escape) plus
+     user-tunable budgets (max files / new files / LOC, allowed_areas,
+     no_new_top_level_dirs, dep change toggles).
+   - `routes/constraints.py` — `GET / PUT / POST reset` per project.
+   - `repositories.py` — `get_constraints`, `set_constraints` (new `constraints`
+     collection, unique on `project_id`).
+   - Wired into `engines/repair_engine.attempt_repairs(...)` (and through
+     `routes/build.py` + `routes/generate.py`) so repair patches that violate
+     constraints are now **rejected and logged** rather than silently applied.
+   - Frontend `pages/Constraints.jsx` — full editor with sensible defaults
+     reset. Sidebar entry added.
+
+5. **Phase 3a — Improve/Fix workflow end-to-end**
+   - `engines/improve_engine.py` — `request_improve()`:
+     1. snapshot workspace,
+     2. ask gemini-2.5-pro for a JSON change manifest with WHOLE file contents,
+     3. validate manifest against constraints,
+     4. apply atomically with safe-path checks,
+     5. real `npm install/build` + `pip install/import` rebuild,
+     6. **auto-rollback to snapshot on any build regression**,
+     7. re-run acceptance, return a structured `ImproveAttempt` with diffs.
+   - `routes/improve.py` — `POST/GET /api/projects/{id}/improve` and
+     `GET /api/projects/{id}/improve/{attempt_id}`.
+   - `repositories.py` — new `improve_attempts` collection with proper indexes.
+   - Frontend `pages/Improve.jsx` — change-request textarea, current
+     constraints pills, list of past attempts each with status pill, diff
+     summary, violations list, and rollback indicators. Sidebar entry added.
+   - Ledger emits: `improve.requested`, `improve.applied`, `improve.rolled_back`,
+     `improve.rejected_by_constraints`, `improve.llm_failed`.
+
+Status verified by direct API: 28 routes registered (was 24), defaults seeded
+on GET, custom values persisted on PUT, reset works, area filtering enforced.
+UI verified: both new pages render, sidebar shows both entries with icons.
+
 No working flow was removed, no architecture was silently replaced, no fallback
-was weakened, and no LLM calls were made during this audit.
+was weakened, and no LLM calls were made during the audit itself. Improve was
+designed to use exactly **1** heavy (Pro) call per request — no per-file
+chatter. Repair still uses 1 heavy call per attempt (max 2 attempts).
 
 ---
 

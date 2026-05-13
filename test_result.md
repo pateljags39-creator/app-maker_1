@@ -112,75 +112,99 @@ user_problem_statement: |
   2.5 Pro for major tasks). Minimise LLM calls — per-minute rate limit.
 
 backend:
-  - task: "requirements.txt install-blocker fix"
+  - task: "Phase 3b — Bounded-customization constraints registry"
     implemented: true
     working: "NA"
-    file: "backend/requirements.txt"
+    file: "backend/engines/constraints.py, backend/routes/constraints.py, backend/repositories.py, backend/engines/repair_engine.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: false
+    needs_retesting: true
     status_history:
       - working: "NA"
         agent: "main"
         comment: |
-          Replaced pydantic==2.7.1 / pydantic_core==2.18.2 / pydantic-settings==2.2.1
-          (conflicts with google-genai==2.0.1 which requires pydantic>=2.9) with
-          pydantic>=2.10,<3 and pydantic-settings>=2.4,<3 and removed the
-          pydantic_core pin. `pip install --dry-run -r requirements.txt` now
-          resolves cleanly (verified). Runtime venv unaffected (already had
-          pydantic 2.13.4). Backend health endpoint still returns 200 after restart.
+          Added ProjectConstraints dataclass + validate_change() with hard rules
+          (forbidden paths, secret regex, workspace escape detection) and tunable
+          budgets (max_files_changed=8, max_new_files=5, max_total_loc_changed=1500,
+          allowed_areas, no_new_top_level_dirs, dep change toggles).
+          - GET/PUT/POST-reset endpoints under /api/projects/{id}/constraints
+          - Mongo collection `constraints` with unique index on project_id
+          - WIRED into repair_engine.attempt_repairs(...) and through both
+            routes/build.py and routes/generate.py — repair patches now go
+            through validate_change() before any file is written; violations
+            are recorded in the RepairAttempt note and the patch is skipped.
+          Smoke-tested live: GET returns defaults, PUT persists custom values,
+          area filter strips invalid entries, POST reset works.
 
-  - task: "LLM gateway hybrid tier routing (Flash + 2.5 Pro)"
+  - task: "Phase 3a — Improve/Fix workflow end-to-end"
     implemented: true
     working: "NA"
-    file: "backend/engines/llm_gateway.py"
+    file: "backend/engines/improve_engine.py, backend/routes/improve.py, backend/repositories.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: false
+    needs_retesting: true
     status_history:
       - working: "NA"
         agent: "main"
         comment: |
-          Added per-call `tier` parameter to LLMGateway.complete():
-            tier="light" -> gemini-2.5-flash  (default, used by per-file gen, BRD
-                            questions, classify hints — high-volume, cheap)
-            tier="heavy" -> gemini-2.5-pro    (BRD derive, plan generation,
-                            repair patch synthesis — once per phase)
-          Updated 3 callsites to pass tier="heavy":
-            - engines/brd_engine.py::derive_brd
-            - engines/generation_engine.py::generate_plan
-            - engines/repair_engine.py::_ask_patch
-          `/api/system/health` now exposes `tier_models` and `default_tier` for
-          observability. Lint passes. Module imports OK in venv.
+          New ImproveAttempt pipeline:
+            1. create_snapshot() pre-change for rollback
+            2. ask gemini-2.5-pro (tier="heavy") for JSON manifest with WHOLE
+               file contents per change (no diff/patch format)
+            3. validate manifest against constraints (deterministic)
+            4. apply atomically with safe-path checks
+            5. real npm + pip rebuild via build_engine.run_build()
+            6. AUTO-ROLLBACK on build regression (compares to last_build_status)
+            7. re-run acceptance for honest read-out
+          Possible statuses: applied | rolled_back | rejected_by_constraints |
+          llm_failed | pending. Each persisted to new improve_attempts collection
+          with full file deltas (before/after sha256 + line counts).
+          Routes: POST /api/projects/{id}/improve, GET list, GET single attempt.
+          Ledger events: improve.requested, improve.applied, improve.rolled_back,
+          improve.rejected_by_constraints, improve.llm_failed.
+          Designed for minimal LLM calls: exactly 1 Pro call per request, no
+          per-file chatter. NOT yet end-to-end tested with a real LLM call
+          (per user "minimise LLM calls" constraint — schedule a real run
+          when a fully-generated project is available).
 
-  - task: "Audit report committed"
+frontend:
+  - task: "Improve / Fix page + Constraints page + nav entries"
     implemented: true
     working: "NA"
-    file: "memory/AUDIT.md"
+    file: "frontend/src/pages/Improve.jsx, frontend/src/pages/Constraints.jsx, frontend/src/App.js, frontend/src/components/cockpit/AppShell.jsx, frontend/src/lib/api.js"
     stuck_count: 0
-    priority: "medium"
-    needs_retesting: false
+    priority: "high"
+    needs_retesting: true
     status_history:
       - working: "NA"
         agent: "main"
         comment: |
-          Wrote comprehensive audit at /app/memory/AUDIT.md: architecture audit,
-          module map, implementation status matrix mapped to BRD phases,
-          critical/high/medium/low findings, and proposed Phase 3+ execution plan.
-          No code paths were silently rewritten; only the 2 fixes above were applied.
-
-frontend: []
+          Two new cockpit pages wired into routing and sidebar:
+          - /projects/{id}/constraints — full editor (change budget, scope,
+            dependencies, notes) with Save / Reset to defaults. Hard rules
+            displayed as always-on info card.
+          - /projects/{id}/improve — change-request textarea + constraint
+            pills + past-attempts list with status badges, expandable diff
+            summary (file actions, LOC deltas, violations, npm/pip deps,
+            unsupported items, error messages, snapshot id on rollback).
+          New API client methods: getConstraints / putConstraints /
+          resetConstraints / requestImprove / listImproves / getImprove.
+          Lint passes; UI smoke tested via screenshot — Constraints page
+          renders fully (all form fields visible), sidebar shows both new
+          entries with proper Lucide icons (Wand2 for Improve, Shield for
+          Constraints) between Acceptance and Export.
 
 metadata:
   created_by: "main_agent"
-  version: "0.2.1"
-  test_sequence: 1
+  version: "0.3.0"
+  test_sequence: 2
   run_ui: false
 
 test_plan:
   current_focus:
-    - "requirements.txt install-blocker fix"
-    - "LLM gateway hybrid tier routing (Flash + 2.5 Pro)"
+    - "Phase 3b — Bounded-customization constraints registry"
+    - "Phase 3a — Improve/Fix workflow end-to-end"
+    - "Improve / Fix page + Constraints page + nav entries"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -193,5 +217,13 @@ agent_communication:
       health green: primary_available=true, fallback_available=true, tier_models
       now reported. Applied 2 highest-impact fixes (CRITICAL-1 requirements.txt
       install conflict; CRITICAL-2 hybrid model routing). Audit at memory/AUDIT.md.
-      Waiting for user decision on which Phase 3 slice to tackle next (Improve/Fix
-      vs constraints registry vs frontend-only gating tightening).
+  - agent: "main"
+    message: |
+      Phase 3a + 3b shipped in same pass per user request "do a and b".
+      Backend: constraints engine + improve engine + 4 new routes wired into
+      Mongo + repair engine now respects per-project constraints.
+      Frontend: 2 new pages, sidebar nav, api.js extensions.
+      Verified via direct API calls (constraints CRUD) and screenshots
+      (Constraints page fully renders, Improve page testid materialized).
+      Improve full LLM round-trip not yet exercised to honour the user's
+      per-minute Gemini rate limit; safe to run from the UI when desired.

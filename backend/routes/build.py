@@ -34,7 +34,11 @@ async def _do_build(project_id: str) -> None:
         if build.overall_status != "PASS":
             await led.emit_simple(project_id, "repair.started", "Attempting repairs", severity="warning")
             gw = LLMGateway()
-            build, outcome = await attempt_repairs(ws, project_id, gw, max_retries=2, initial_build=build)
+            constraints = await repo.get_constraints(project_id)
+            build, outcome = await attempt_repairs(
+                ws, project_id, gw, max_retries=2,
+                initial_build=build, constraints=constraints,
+            )
             repair_dict = outcome.to_dict()
             for a in outcome.attempts:
                 await led.emit_simple(project_id, "repair.attempt",

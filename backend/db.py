@@ -39,6 +39,11 @@ async def ensure_indexes() -> None:
     await db.builds.create_index([("project_id", 1), ("created_at", -1)])
     await db.acceptance.create_index([("project_id", 1), ("created_at", -1)])
     await db.exports.create_index([("project_id", 1), ("created_at", -1)])
+    await db.constraints.create_index("project_id", unique=True)
+    await db.improve_attempts.create_index([("project_id", 1), ("created_at", -1)])
+    await db.improve_attempts.create_index(
+        [("project_id", 1), ("attempt_id", 1)], unique=True
+    )
 
 
 async def close_client() -> None:
