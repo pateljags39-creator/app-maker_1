@@ -14,6 +14,7 @@ from .improve import router as improve_router
 from .ingest import router as ingest_router
 from .plan import router as plan_router
 from .projects import router as projects_router
+from .sandbox import router as sandbox_router
 from .system import router as system_router
 
 api = APIRouter(prefix="/api")
@@ -31,3 +32,4 @@ api.include_router(system_router)
 api.include_router(constraints_router)
 api.include_router(improve_router)
 api.include_router(ingest_router)
+api.include_router(sandbox_router)

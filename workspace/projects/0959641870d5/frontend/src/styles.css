@@ -2,18 +2,24 @@
 @tailwind components;
 @tailwind utilities;
 
-/* You can add any custom CSS here if needed,
-   but for a simple calculator, Tailwind CSS
-   should be sufficient for most styling. */
-
 body {
-  font-family: 'Arial', sans-serif;
-  background-color: #f0f2f5; /* Light gray background */
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f0f0f0; /* Light gray background for the whole page */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh; /* Ensure body takes full viewport height */
 }
 
 #root {
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 100vh;
+  width: 100%;
+  height: 100%;
 }

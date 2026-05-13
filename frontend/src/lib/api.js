@@ -60,6 +60,12 @@ export const api = {
   eventsStreamUrl: (id) => `${API_BASE}/projects/${id}/events/stream`,
   // recovery — unstick a project frozen in Generating/Building/Repair/Acceptance
   recoverProject: (id) => client.post(`/projects/${id}/recover`).then(r => r.data),
+  // sandbox — run a generated project so the user can demo it
+  sandboxStart: (id) => client.post(`/projects/${id}/sandbox/start`, {}, { timeout: 30000 }).then(r => r.data),
+  sandboxStop: (id) => client.post(`/projects/${id}/sandbox/stop`).then(r => r.data),
+  sandboxStatus: (id) => client.get(`/projects/${id}/sandbox/status`).then(r => r.data),
+  sandboxLogs: (id, lines = 120) => client.get(`/projects/${id}/sandbox/logs`, { params: { lines } }).then(r => r.data),
+  sandboxIframeSrc: (id) => `${API_BASE}/sandbox/${id}/`,
 };
 
 export default api;

@@ -14,6 +14,7 @@ import AcceptancePage from '@/pages/Acceptance';
 import ExportPage from '@/pages/Export';
 import ImprovePage from '@/pages/Improve';
 import ConstraintsPage from '@/pages/Constraints';
+import SandboxPage from '@/pages/Sandbox';
 import useProject from '@/lib/useProject';
 import '@/App.css';
 
@@ -78,6 +79,7 @@ function App() {
             <Route path="acceptance" element={<AcceptancePage />} />
             <Route path="improve" element={<ImprovePage />} />
             <Route path="constraints" element={<ConstraintsPage />} />
+            <Route path="sandbox" element={<SandboxPage />} />
             <Route path="export" element={<ExportPage />} />
           </Route>
           <Route path="*" element={<NotFound />} />

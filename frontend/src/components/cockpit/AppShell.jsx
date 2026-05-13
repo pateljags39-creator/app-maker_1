@@ -3,7 +3,7 @@ import { Link, useLocation, useParams } from 'react-router-dom';
 import {
   LayoutGrid, FilePlus, Cpu, MessagesSquare, Network, ListTree, FileCode2,
   Hammer, ClipboardCheck, Package, ChevronLeft, ChevronRight, Activity,
-  Wand2, Shield,
+  Wand2, Shield, Sparkles,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Sheet, SheetTrigger, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet';
@@ -27,6 +27,7 @@ function ProjectNav({ id, current }) {
     { to: `/projects/${id}/acceptance`, icon: ClipboardCheck, label: 'Acceptance' },
     { to: `/projects/${id}/improve`, icon: Wand2, label: 'Improve' },
     { to: `/projects/${id}/constraints`, icon: Shield, label: 'Constraints' },
+    { to: `/projects/${id}/sandbox`, icon: Sparkles, label: 'Sandbox' },
     { to: `/projects/${id}/export`, icon: Package, label: 'Export' },
   ];
   return (

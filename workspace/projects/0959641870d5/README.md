@@ -1,107 +1,113 @@
 # Simple Web Calculator
 
-This is a client-side web application that provides a basic calculator for arithmetic operations. It supports addition, subtraction, multiplication, and division, and includes a clear function. All calculations are performed in the browser without any backend interaction or data persistence, as per the business requirements.
+A basic web-based calculator application that performs standard arithmetic operations (addition, subtraction, multiplication, division) and includes a clear function. This application is designed to operate entirely on the client-side, with all calculations performed in the browser.
+
+## Summary
+
+The Simple Web Calculator provides a straightforward user interface for basic arithmetic. It supports integers and floating-point numbers, handles division by zero errors, and allows users to clear the current input. As per the requirements, the application is purely client-side; the included backend structure serves as a placeholder to meet project architectural specifications but is not utilized by the calculator's functionality.
 
 ## Features
 
-*   Perform addition, subtraction, multiplication, and division.
-*   Clear button to reset the current calculation.
-*   Handles both integers and floating-point numbers.
-*   Displays 'Error' for division by zero.
-*   Displays 'Error' for invalid input or results exceeding display limits.
-*   Follows standard mathematical order of operations (PEMDAS).
-*   Operates entirely on the client-side with no backend interaction for calculations.
-*   No history of calculations is stored.
-*   User interface with a display area and clickable buttons.
-*   Designed for desktop screen sizes only (no responsive design).
-*   Does not support keyboard input.
+*   **Basic Arithmetic**: Perform addition, subtraction, multiplication, and division.
+*   **Clear Function**: Reset the calculator display and state.
+*   **Error Handling**: Displays "Error" for division by zero.
+*   **Client-Side Only**: All calculations are performed in the browser; no backend interaction or history storage.
+*   **Responsive UI**: Designed for desktop screen sizes.
+
+## Technologies Used
+
+### Frontend
+
+*   **React 18**: JavaScript library for building user interfaces.
+*   **Vite 5**: Next-generation frontend tooling for fast development.
+*   **Tailwind CSS**: A utility-first CSS framework for styling.
+
+### Backend (Placeholder)
+
+*   **FastAPI**: A modern, fast (high-performance) web framework for building APIs with Python 3.7+.
+*   **SQLAlchemy 2**: Python SQL toolkit and Object Relational Mapper.
+*   **Pydantic v2**: Data validation and settings management using Python type hints.
+*   **SQLite**: A C-language library that implements a small, fast, self-contained, high-reliability, full-featured, SQL database engine.
+
+**Note**: The backend components (FastAPI, SQLAlchemy, Pydantic, SQLite) are included to fulfill the full-stack project structure requirement but are not actively used by the calculator application, which operates entirely on the client-side.
 
 ## Prerequisites
 
 Before you begin, ensure you have the following installed:
 
-*   **Node.js** (LTS version recommended) and **npm** (comes with Node.js) or **Yarn**.
-*   **Python 3.9+** and **pip**.
+*   **Node.js** (LTS version recommended) & **npm** (or yarn)
+*   **Python 3.8+** & **pip**
 
 ## Getting Started
 
-1.  **Clone the repository:**
+Follow these steps to set up and run the application locally.
 
-    ```bash
-    git clone <repository-url>
-    cd simple-web-calculator
-    ```
+### 1. Clone the Repository
 
-2.  **Frontend Setup:**
+```bash
+git clone https://github.com/your-username/simple-web-calculator.git
+cd simple-web-calculator
+```
 
-    The frontend is a React application built with Vite and styled with Tailwind CSS.
+### 2. Frontend Setup
 
-    *   **Navigate to the frontend directory:**
-        ```bash
-        cd frontend
-        ```
+Navigate to the `frontend` directory, install dependencies, and start the development server.
 
-    *   **Install dependencies:**
-        ```bash
-        npm install
-        # or yarn install
-        ```
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-    *   **Run the development server:**
-        This will start the Vite development server, typically on `http://localhost:5173`.
-        ```bash
-        npm run dev
-        # or yarn dev
-        ```
+The frontend application will typically be available at `http://localhost:5173`.
 
-    *   **Build for production:**
-        ```bash
-        npm run build
-        # or yarn build
-        ```
-        You can then preview the production build using `npm run preview`.
+### 3. Backend Setup (Optional - Placeholder)
 
-3.  **Backend Setup (Boilerplate):**
+Navigate to the `backend` directory, install dependencies, and start the FastAPI server.
 
-    The backend is a FastAPI application. **Note:** This application is primarily client-side. The backend is included as boilerplate for a full-stack project structure but is not actively used for the calculator's core functionality.
+```bash
+cd ../backend
+pip install -r requirements.txt
+python main.py
+```
 
-    *   **Navigate to the backend directory:**
-        ```bash
-        cd ../backend
-        ```
+The backend API will typically be available at `http://localhost:8000`.
+**Important**: As mentioned, the backend is a placeholder and does not provide any functionality for the calculator. The frontend does not make any API calls to it.
 
-    *   **Create and activate a virtual environment (recommended):**
-        ```bash
-        python -m venv venv
-        # On Windows:
-        # .\venv\Scripts\activate
-        # On macOS/Linux:
-        source venv/bin/activate
-        ```
+## Usage
 
-    *   **Install dependencies:**
-        ```bash
-        pip install -r requirements.txt
-        ```
+1.  Open your web browser and navigate to the frontend URL (e.g., `http://localhost:5173`).
+2.  Click the number buttons to input your first number.
+3.  Click an operator button (+, -, \*, /).
+4.  Click the number buttons to input your second number.
+5.  Click the `=` button to see the result.
+6.  Click the `C` button to clear the display and start a new calculation.
 
-    *   **Run the development server:**
-        This will start the FastAPI server, typically on `http://localhost:8000`.
-        ```bash
-        uvicorn main:app --reload
-        ```
-        Deactivate the virtual environment when done: `deactivate`
+## Project Structure
 
-## Ports
-
-*   **Frontend:** `http://localhost:5173` (default Vite development server port)
-*   **Backend:** `http://localhost:8000` (default FastAPI/Uvicorn port)
-
-## Environment Variables
-
-*   **Frontend:**
-    *   `VITE_API_URL`: Specifies the base URL for API requests. Defaults to `http://localhost:8000` if not set.
-        Example in a `.env` file (in the `frontend/` directory):
-        ```
-        VITE_API_URL=http://localhost:8000
-        ```
-        *Note: For this client-side calculator, the frontend does not make API calls, so this variable is not strictly necessary for functionality but is included for standard project setup.*
+```
+simple-web-calculator/
+├── backend/
+│   ├── database.py         # SQLAlchemy database configuration (placeholder)
+│   ├── main.py             # FastAPI application entry point (placeholder)
+│   ├── models.py           # SQLAlchemy ORM models (placeholder)
+│   ├── requirements.txt    # Python dependencies
+│   └── schemas.py          # Pydantic schemas (placeholder)
+├── frontend/
+│   ├── index.html          # Main HTML file
+│   ├── package.json        # Frontend dependencies and scripts
+│   ├── postcss.config.js   # PostCSS configuration for Tailwind
+│   ├── public/             # Static assets
+│   ├── src/
+│   │   ├── api.js          # Placeholder for API calls (empty)
+│   │   ├── App.jsx         # Root React component
+│   │   ├── components/
+│   │   │   ├── Button.jsx  # Reusable calculator button
+│   │   │   ├── Calculator.jsx # Main calculator logic and UI
+│   │   │   └── Display.jsx # Calculator display screen
+│   │   ├── main.jsx        # React entry point
+│   │   └── styles.css      # Main stylesheet (includes Tailwind directives)
+│   ├── tailwind.config.js  # Tailwind CSS configuration
+│   └── vite.config.js      # Vite configuration
+└── README.md               # Project overview and instructions
+```

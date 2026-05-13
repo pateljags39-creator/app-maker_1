@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
-import { Play, ArrowRight, AlertTriangle, ListTree, Network, MessagesSquare, FileCode2, Hammer, ClipboardCheck, Package } from 'lucide-react';
+import { Play, ArrowRight, AlertTriangle, ListTree, Network, MessagesSquare, FileCode2, Hammer, ClipboardCheck, Package, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import StatusBadge from '@/components/cockpit/StatusBadge';
 import PhaseStepper from '@/components/cockpit/PhaseStepper';
@@ -89,6 +89,7 @@ export default function Cockpit() {
     { to: `/projects/${project.id}/files`, label: 'Files', icon: FileCode2, desc: 'Generated code tree + viewer' },
     { to: `/projects/${project.id}/build`, label: 'Build & Repair', icon: Hammer, desc: 'Real npm + pip build with repair budget' },
     { to: `/projects/${project.id}/acceptance`, label: 'Acceptance', icon: ClipboardCheck, desc: 'Honest PASS/PARTIAL/FAIL per check' },
+    { to: `/projects/${project.id}/sandbox`, label: 'Sandbox · Run Demo', icon: Sparkles, desc: 'Run the generated app live and click through it', primary: true },
     { to: `/projects/${project.id}/export`, label: 'Export', icon: Package, desc: 'Clean ZIP + manifest + secret scan' },
   ];
 
