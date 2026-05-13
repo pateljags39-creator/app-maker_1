@@ -285,6 +285,9 @@ async def generate_project(
     _stub_missing_relative_imports(workspace)
     _stub_missing_named_exports_js(workspace)
     _stub_missing_python_module_attrs(workspace)
+    _fix_python_class_attr_case_mismatches(workspace)
+    _ensure_pydantic_camel_aliases(workspace)
+    _ensure_frontend_uses_relative_api(workspace)
 
     # Also drop a minimal package-lock-free .gitignore for honesty in exports.
     (workspace / ".gitignore").write_text(
@@ -696,19 +699,84 @@ def _stub_missing_named_exports_js(workspace: Path) -> None:
             missing = [n for n in requested if n not in existing]
             if not missing:
                 continue
-            # Append stub exports
+            # Build a re-export alias to the closest existing export by combined
+            # name similarity + verb-category match (e.g. `getCalculations` should
+            # alias to `fetchCalculationHistory`, NOT `saveCalculation`, because
+            # `get` and `fetch` are both read-verbs while `save` is a write-verb).
+            # Falls back to a loud-failing stub when no plausible match exists, so
+            # the bug surfaces at the first call site instead of silently nulling.
+            import difflib as _difflib
+            _READ_VERBS = {"get", "fetch", "load", "read", "list", "find", "query", "search", "retrieve"}
+            _WRITE_VERBS = {"save", "create", "post", "add", "insert", "submit", "send"}
+            _UPDATE_VERBS = {"update", "edit", "modify", "patch", "put", "set"}
+            _DELETE_VERBS = {"delete", "remove", "destroy", "clear"}
+
+            def _verb_category(name: str) -> str:
+                # Pull off the leading lowercase-prefix verb, e.g. getFooBar -> "get"
+                m2 = _re.match(r"^([a-z]+)", name)
+                v = m2.group(1) if m2 else ""
+                if v in _READ_VERBS:
+                    return "read"
+                if v in _WRITE_VERBS:
+                    return "write"
+                if v in _UPDATE_VERBS:
+                    return "update"
+                if v in _DELETE_VERBS:
+                    return "delete"
+                return "other"
+
+            def _score(target_name: str, candidate: str) -> float:
+                base = _difflib.SequenceMatcher(None, target_name.lower(), candidate.lower()).ratio()
+                # Reward verb-category match heavily; penalise mismatches.
+                tcat = _verb_category(target_name)
+                ccat = _verb_category(candidate)
+                if tcat == ccat and tcat != "other":
+                    base += 0.30
+                elif tcat != "other" and ccat != "other" and tcat != ccat:
+                    base -= 0.20
+                return base
+
+            existing_list = sorted(existing)
             stub_lines = [
                 "\n// AUTO-STUB: missing named exports added by Local App Creator post-fixup.",
+                "// Each missing symbol below is either aliased to a same-file export with",
+                "// a similar name + verb category, or it throws loudly so the bug isn't",
+                "// silently swallowed at runtime.",
             ]
+            aliased: list[str] = []
+            thrown: list[str] = []
             for n in missing:
-                # Heuristic: SCREAMING_CASE → constant, camelCase → no-op function
-                if n.isupper() or _re.match(r"^[A-Z][A-Z0-9_]*$", n):
-                    stub_lines.append(f"export const {n} = null;")
+                ranked = sorted(
+                    ((c, _score(n, c)) for c in existing_list),
+                    key=lambda kv: kv[1],
+                    reverse=True,
+                )
+                best_match = ranked[0] if ranked else None
+                if best_match and best_match[1] >= 0.55:
+                    src_name = best_match[0]
+                    stub_lines.append(
+                        f"// `{n}` aliased to `{src_name}` (best-guess match, score={best_match[1]:.2f}). "
+                        f"Replace if wrong."
+                    )
+                    stub_lines.append(f"export const {n} = {src_name};")
+                    aliased.append(f"{n}<-{src_name}")
                 else:
-                    stub_lines.append(f"export const {n} = (...args) => null;")
+                    # Loud failure — DO NOT silently return null. Honesty rule.
+                    stub_lines.append(
+                        f"export const {n} = (...args) => {{ "
+                        f"throw new Error("
+                        f"\"Local App Creator: missing implementation for '{n}'. "
+                        f"Replace this auto-stub with the real function.\""
+                        f"); }};"
+                    )
+                    thrown.append(n)
             with target.open("a", encoding="utf-8") as fh:
                 fh.write("\n" + "\n".join(stub_lines) + "\n")
             appended.append((str(target.relative_to(workspace)), missing))
+            if aliased:
+                logger.info("Aliased missing exports in %s: %s", target.name, ", ".join(aliased))
+            if thrown:
+                logger.warning("Stubbed loud-throwing exports in %s: %s", target.name, ", ".join(thrown))
 
     if appended:
         marker_path = workspace / ".factory" / "stubs.json"
@@ -812,6 +880,343 @@ def _stub_missing_python_module_attrs(workspace: Path) -> None:
             [{"file": f, "added": names} for f, names in appended]
         )
         marker_path.write_text(_json.dumps(existing_marker, indent=2), encoding="utf-8")
+
+
+def _fix_python_class_attr_case_mismatches(workspace: Path) -> None:
+    """Fix typo-style camel/snake-case mismatches on SQLAlchemy/Pydantic class attrs.
+
+    Bug pattern (real, from generated calculator app):
+        # In models.py:
+        class Calculation(Base):
+            session_id = Column(String)   # snake_case (Python convention)
+        # In main.py (same backend), the LLM accidentally typed:
+            query.filter(Calculation.sessionId.in_(ids))  # camelCase! AttributeError at runtime
+
+    Build passes (no static check), tests pass (no DB hits), but the first real
+    API call returns 500 because the attribute doesn't exist.
+
+    Fix: for every class declared in `backend/**.py` that looks like a data model
+    (has either SQLAlchemy `Column(...)` lines OR Pydantic-style annotated fields),
+    extract its declared attribute names. Then scan all usage `ClassName.<attr>`
+    in the backend tree. For each `<attr>` not in the declared set, if the
+    snake_case OR camelCase variant IS declared, rewrite the reference to match
+    the declaration.
+
+    Idempotent: only rewrites when a high-confidence match is found.
+    """
+    import re as _re
+    import ast as _ast
+    be = workspace / "backend"
+    if not be.exists():
+        return
+
+    # Step 1: collect class -> declared attrs from all backend python files
+    class_attrs: dict[str, set[str]] = {}
+    py_files = [p for p in be.rglob("*.py") if "__pycache__" not in p.parts]
+
+    for p in py_files:
+        try:
+            text = p.read_text("utf-8", "replace")
+            tree = _ast.parse(text)
+        except Exception:
+            continue
+        for node in _ast.walk(tree):
+            if isinstance(node, _ast.ClassDef):
+                attrs: set[str] = set()
+                for item in node.body:
+                    if isinstance(item, _ast.AnnAssign) and isinstance(item.target, _ast.Name):
+                        attrs.add(item.target.id)
+                    elif isinstance(item, _ast.Assign):
+                        for t in item.targets:
+                            if isinstance(t, _ast.Name):
+                                attrs.add(t.id)
+                if attrs:
+                    class_attrs.setdefault(node.name, set()).update(attrs)
+
+    if not class_attrs:
+        return
+
+    def _to_snake(name: str) -> str:
+        s1 = _re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", name)
+        return _re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
+
+    def _to_camel(name: str) -> str:
+        parts = name.split("_")
+        return parts[0] + "".join(p.capitalize() for p in parts[1:])
+
+    # Step 2: scan all usages and rewrite mismatches
+    total_fixes = 0
+    fix_summary: list[tuple[str, str]] = []
+
+    for p in py_files:
+        try:
+            text = p.read_text("utf-8", "replace")
+            tree = _ast.parse(text)
+        except Exception:
+            continue
+        # Per-file alias map: local_name -> declared_class_name
+        # e.g. `from models import Calculation as DB_Calculation` => {"DB_Calculation": "Calculation"}
+        # Also include identity for any class name that is directly visible in this file.
+        local_names: dict[str, str] = {}
+        for node in _ast.walk(tree):
+            if isinstance(node, _ast.ImportFrom):
+                for alias in (node.names or []):
+                    if alias.name in class_attrs:
+                        local_names[alias.asname or alias.name] = alias.name
+            elif isinstance(node, _ast.Import):
+                for alias in (node.names or []):
+                    # `import models` style: the module itself is referenced (not class).
+                    # Skip — module-level attr access is handled by _stub_missing_python_module_attrs.
+                    pass
+            elif isinstance(node, _ast.ClassDef):
+                if node.name in class_attrs:
+                    local_names[node.name] = node.name
+        if not local_names:
+            continue
+
+        usage_rx = _re.compile(
+            r"\b(" + "|".join(_re.escape(n) for n in local_names.keys()) + r")\.([a-z][a-zA-Z0-9_]*)\b"
+        )
+        file_fixes = [0]
+
+        def _maybe_rewrite(m: _re.Match) -> str:
+            local = m.group(1)
+            attr = m.group(2)
+            declared_class = local_names.get(local)
+            declared = class_attrs.get(declared_class, set()) if declared_class else set()
+            if not declared or attr in declared:
+                return m.group(0)
+            snake = _to_snake(attr)
+            camel = _to_camel(attr)
+            for cand in (snake, camel):
+                if cand in declared and cand != attr:
+                    file_fixes[0] += 1
+                    fix_summary.append((str(p.relative_to(workspace)), f"{local}.{attr} -> {local}.{cand}"))
+                    return f"{local}.{cand}"
+            return m.group(0)
+
+        new_text = usage_rx.sub(_maybe_rewrite, text)
+        if new_text != text:
+            p.write_text(new_text, encoding="utf-8")
+            total_fixes += file_fixes[0]
+
+    if total_fixes:
+        logger.info("Fixed %d class-attribute case mismatches: %s", total_fixes, "; ".join(s[1] for s in fix_summary[:5]))
+        marker_path = workspace / ".factory" / "fixups.json"
+        marker_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            cur = json.loads(marker_path.read_text(encoding="utf-8")) if marker_path.exists() else {}
+        except Exception:
+            cur = {}
+        cur["python_class_attr_case_fixes"] = cur.get("python_class_attr_case_fixes", 0) + total_fixes
+        marker_path.write_text(json.dumps(cur, indent=2), encoding="utf-8")
+
+
+def _ensure_pydantic_camel_aliases(workspace: Path) -> None:
+    """Bridge the JS↔Python field-naming gap.
+
+    Frontend JS files conventionally use camelCase (`sessionId`); Python/Pydantic
+    schemas conventionally use snake_case (`session_id`). When the LLM emits both
+    independently, every API call fails at runtime with 422 Validation Error.
+
+    Fix: for every Pydantic BaseModel-derived class in `backend/**.py` whose own
+    body contains snake_case fields AND does NOT already declare its own
+    `model_config`, inject a `model_config` that:
+      - generates camelCase aliases automatically (`session_id` -> `sessionId`),
+      - keeps `populate_by_name=True` so both forms still work,
+      - sets `from_attributes=True` so ORM rows still convert.
+
+    Idempotent: classes with their own `model_config` are left alone; files
+    without any BaseModel import are skipped.
+    """
+    import re as _re
+    be = workspace / "backend"
+    if not be.exists():
+        return
+
+    # We need to find each class declaration AND know whether it inherits
+    # (directly or transitively within the same file) from BaseModel.
+    class_decl_rx = _re.compile(
+        r"^class\s+([A-Za-z_]\w*)\s*\(\s*([^)]+)\s*\)\s*:\s*$",
+        _re.MULTILINE,
+    )
+    basemodel_import_rx = _re.compile(r"from\s+pydantic\s+import\s+[^#\n]*\bBaseModel\b")
+
+    touched = 0
+    for p in be.rglob("*.py"):
+        if "__pycache__" in p.parts:
+            continue
+        try:
+            text = p.read_text("utf-8", "replace")
+        except Exception:
+            continue
+        if "BaseModel" not in text or not basemodel_import_rx.search(text):
+            continue
+        decls = list(class_decl_rx.finditer(text))
+        if not decls:
+            continue
+
+        # Walk classes top-to-bottom, build a transitive BaseModel-derived set.
+        derived: set[str] = set()
+        class_info: list[tuple[str, int, int, set[str]]] = []  # (name, start, end_of_header, parents)
+        for m in decls:
+            name = m.group(1)
+            parents = {p.strip() for p in m.group(2).split(",") if p.strip()}
+            if "BaseModel" in parents or any(par in derived for par in parents):
+                derived.add(name)
+                class_info.append((name, m.start(), m.end(), parents))
+
+        if not class_info:
+            continue
+
+        # For each derived class, look at its body (until the next class decl
+        # or EOF) and decide if it needs injection.
+        # We build a list of (header_end_pos, has_snake_field, has_own_model_config)
+        new_text = text
+        # We will apply edits from the end of the file backwards so positions
+        # don't shift.
+        edits: list[tuple[int, str]] = []  # (insert_at_pos, text_to_insert)
+
+        # Compute next-class boundaries
+        boundaries = [start for _, start, _, _ in class_info] + [len(text)]
+        for i, (name, _start, header_end, _parents) in enumerate(class_info):
+            body_start = header_end
+            body_end = boundaries[i + 1] if i + 1 < len(boundaries) else len(text)
+            body = text[body_start:body_end]
+            has_snake = bool(_re.search(r"^\s{4}[a-z][a-z0-9]*_[a-z0-9_]*\s*[:=]", body, _re.MULTILINE))
+            has_own_cfg = "model_config" in body
+            if has_snake and not has_own_cfg:
+                # Insert injection right after the header line. Maintain newline.
+                injection = "\n    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, from_attributes=True)"
+                edits.append((header_end, injection))
+
+        if not edits:
+            continue
+
+        # Apply edits back-to-front
+        for pos, ins in sorted(edits, key=lambda e: e[0], reverse=True):
+            new_text = new_text[:pos] + ins + new_text[pos:]
+
+        # Ensure imports present.
+        # Check by scanning only the import section (top of file before first class)
+        # rather than the whole text, since the model_config injection itself
+        # contains the strings "ConfigDict" and "to_camel".
+        first_class_pos = class_decl_rx.search(new_text).start() if class_decl_rx.search(new_text) else len(new_text)
+        import_section = new_text[:first_class_pos]
+        if "ConfigDict" not in import_section:
+            new_text = _re.sub(
+                r"(from\s+pydantic\s+import\s+)([^\n#]+)",
+                lambda mm: mm.group(1) + (mm.group(2).rstrip() + ", ConfigDict") if "ConfigDict" not in mm.group(2) else mm.group(0),
+                new_text,
+                count=1,
+            )
+            # Refresh import_section after edit
+            first_class_pos = class_decl_rx.search(new_text).start() if class_decl_rx.search(new_text) else len(new_text)
+            import_section = new_text[:first_class_pos]
+        if "to_camel" not in import_section:
+            new_text = _re.sub(
+                r"(from\s+pydantic\s+import\s+[^\n]+\n)",
+                r"\1from pydantic.alias_generators import to_camel\n",
+                new_text,
+                count=1,
+            )
+
+        if new_text != text:
+            p.write_text(new_text, encoding="utf-8")
+            touched += 1
+            logger.info("Pydantic camelCase aliases injected: %s (%d class(es))", p.relative_to(workspace), len(edits))
+
+    if touched:
+        marker_path = workspace / ".factory" / "fixups.json"
+        marker_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            cur = json.loads(marker_path.read_text(encoding="utf-8")) if marker_path.exists() else {}
+        except Exception:
+            cur = {}
+        cur["pydantic_camel_aliases_files"] = cur.get("pydantic_camel_aliases_files", 0) + touched
+        marker_path.write_text(json.dumps(cur, indent=2), encoding="utf-8")
+
+
+def _ensure_frontend_uses_relative_api(workspace: Path) -> None:
+    """Replace hardcoded `http://localhost:8000` API base URLs in the frontend.
+
+    The LLM commonly hardcodes `localhost:8000` as the API base. That works on the
+    developer's own machine but fails when the app is opened in any other browser
+    or behind a proxy. Vite already supports a `server.proxy` map for `/api`, so
+    the safest default is to use a *relative* base (`/api`) and let either the
+    dev-server proxy or the same-origin deployment route the request.
+
+    This fixup:
+      - In `frontend/src/**.{js,jsx,ts,tsx}`: replaces `'http://localhost:8000'`
+        and `'http://127.0.0.1:8000'` API-base assignments with the empty string,
+        so requests like `axios.post('/api/x')` become same-origin.
+      - In `vite.config.js`: leaves any existing `server.proxy` alone (the LLM
+        usually gets that right). If there's none and we see a relative `/api`
+        usage in src, we add a minimal proxy pointing at 8000.
+
+    Idempotent.
+    """
+    import re as _re
+    fe = workspace / "frontend"
+    if not fe.exists():
+        return
+    src = fe / "src"
+    changed = 0
+    if src.exists():
+        # Replace hardcoded base URL in JS source files.
+        for p in src.rglob("*.js*"):
+            if "node_modules" in p.parts:
+                continue
+            try:
+                t = p.read_text("utf-8", "replace")
+            except Exception:
+                continue
+            new = _re.sub(
+                r"""(['"])https?://(?:localhost|127\.0\.0\.1)(?::\d+)?\1""",
+                r"\1\1",
+                t,
+            )
+            if new != t:
+                p.write_text(new, encoding="utf-8")
+                changed += 1
+
+    # Ensure vite.config has a /api proxy if none.
+    vc = fe / "vite.config.js"
+    if vc.exists():
+        try:
+            t = vc.read_text(encoding="utf-8")
+        except Exception:
+            t = ""
+        if t and "proxy" not in t:
+            # Inject a minimal proxy block so `npm run dev` can talk to the FastAPI backend.
+            inject = (
+                "  server: {\n"
+                "    proxy: {\n"
+                "      '/api': { target: 'http://localhost:8000', changeOrigin: true },\n"
+                "    },\n"
+                "  },\n"
+            )
+            new_t = _re.sub(
+                r"(defineConfig\(\s*\{\s*)(plugins\s*:\s*\[[^\]]*\]\s*,?)",
+                lambda m: m.group(1) + m.group(2) + ("," if not m.group(2).rstrip().endswith(",") else "") + "\n" + inject,
+                t,
+                count=1,
+            )
+            if new_t != t:
+                vc.write_text(new_t, encoding="utf-8")
+                changed += 1
+
+    if changed:
+        marker_path = workspace / ".factory" / "fixups.json"
+        marker_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            cur = json.loads(marker_path.read_text(encoding="utf-8")) if marker_path.exists() else {}
+        except Exception:
+            cur = {}
+        cur["frontend_relative_api_files"] = cur.get("frontend_relative_api_files", 0) + changed
+        marker_path.write_text(json.dumps(cur, indent=2), encoding="utf-8")
+        logger.info("Rewrote hardcoded localhost API base in %d frontend file(s)", changed)
+
 
 
 # ---------- emergency stubs (clearly labelled) ----------

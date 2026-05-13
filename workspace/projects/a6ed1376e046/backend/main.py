@@ -65,7 +65,7 @@ def get_calculations(
         # Split the comma-separated string into a list of session IDs
         session_id_list = [s.strip() for s in session_ids.split(',') if s.strip()]
         if session_id_list:
-            query = query.filter(DB_Calculation.sessionId.in_(session_id_list))
+            query = query.filter(DB_Calculation.session_id.in_(session_id_list))
     
     # Order by timestamp in descending order to show most recent first
     calculations = query.order_by(DB_Calculation.timestamp.desc()).all()

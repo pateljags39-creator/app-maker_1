@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* You can add any custom CSS here if needed,
+   but for a simple calculator, Tailwind CSS
+   should be sufficient for most styling. */
+
+body {
+  font-family: 'Arial', sans-serif;
+  background-color: #f0f2f5; /* Light gray background */
+}
+
+#root {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}

@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -46,5 +46,10 @@ export const fetchCalculationHistory = async (sessionIds) => {
   }
 };
 
+
 // AUTO-STUB: missing named exports added by Local App Creator post-fixup.
-export const getCalculations = (...args) => null;
+// Each missing symbol below is either aliased to a same-file export with
+// a similar name + verb category, or it throws loudly so the bug isn't
+// silently swallowed at runtime.
+// `getCalculations` aliased to `fetchCalculationHistory` (best-guess match, score=1.04). Replace if wrong.
+export const getCalculations = fetchCalculationHistory;

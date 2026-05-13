@@ -84,30 +84,49 @@ Full architecture audit at `/app/memory/AUDIT.md` (last updated 2026-02-13).
 
 ## Recent changelog
 - **2026-05-13 (continuation pass — user-reported "calculator made a mess" bug)**:
-  - **HIGH-2 fixed — Stale package-lock.json broke every project where the deterministic
-    deps-fixup added a dep after first build.** `build_engine.build_frontend` was using
-    `npm ci` whenever `package-lock.json` existed, but the deterministic fixup
-    `generation_engine._ensure_frontend_deps` writes/updates `package.json` *after*
-    a previous install ran (or after the LLM forgets to declare an imported package),
-    leaving the lockfile stale. `npm ci` refuses to update a stale lockfile, so the
-    next `vite build` failed with `Rollup failed to resolve import "uuid"` (or any
-    similar package). Root cause confirmed by inspecting workspace
-    `a6ed1376e046` (Web Calculator Pro) — build logs show 2 consecutive
-    `Rollup failed to resolve import "uuid"` failures even though `uuid` was correctly
-    listed in `package.json`. Fix: build engine now treats a lock as "fresh" only if
-    (mtime ≥ package.json mtime − 1s) AND (every declared dep appears in the lock).
-    Otherwise the stale lock is deleted and `npm install` regenerates it. Manual
-    rebuild of the failing calculator workspace now passes (`✓ 109 modules transformed`).
-    Unit tests at `tests/test_high2_stale_lockfile_fallback.py` cover all 4 cases.
-
-  - **Stuck-pipeline recovery shipped** (Issue 1 from user). New `engines/recovery_engine.py`
+  - **HIGH-2 fixed — Stale package-lock.json broke builds.** `npm ci` was used
+    whenever `package-lock.json` existed; the deterministic deps-fixup updates
+    `package.json` after the lock is generated, leaving it stale and causing
+    `Rollup failed to resolve import "uuid"`. Build engine now treats a lock as
+    fresh only when mtime ≥ package.json mtime AND every declared dep appears
+    in the lock; otherwise the stale lock is deleted and `npm install`
+    regenerates it. Calc workspace `a6ed1376e046` now builds clean (✓ 109
+    modules transformed). 4 unit tests in `test_high2_stale_lockfile_fallback.py`.
+  - **HIGH-3 fixed — Silent no-op stubs replaced with smart aliases + loud
+    throws.** Old fixup added `export const X = (...args) => null;` for missing
+    exports, breaking runtime features silently. New: alias to closest existing
+    export ranked by name similarity AND verb-category (`get`/`fetch`/`list`
+    are read-verbs; `save`/`create`/`post` are write-verbs). When no plausible
+    match, the stub throws at call time. On calc: `getCalculations` correctly
+    aliases to `fetchCalculationHistory`. 2 unit tests.
+  - **HIGH-4 fixed — JS↔Python field-name mismatch (silent 422s).** Frontend
+    sent `{sessionId,...}`; Pydantic expected `{session_id,...}`. New fixup
+    `_ensure_pydantic_camel_aliases` injects
+    `model_config = ConfigDict(alias_generator=to_camel,
+    populate_by_name=True, from_attributes=True)` into BaseModel-derived
+    classes that declare snake_case fields and have no own model_config.
+    Handles transitive inheritance and respects pre-existing configs.
+    Live-verified: calc API now accepts BOTH naming styles. 4 unit tests.
+  - **HIGH-5 fixed — Hardcoded `http://localhost:8000`** in frontend api.js
+    rewritten to same-origin empty string. Vite dev-server proxy preserved.
+    1 unit test.
+  - **HIGH-6 fixed — Class-attribute camel/snake typos** like
+    `DB_Calculation.sessionId` when `Calculation.session_id` is the truth.
+    New fixup `_fix_python_class_attr_case_mismatches` AST-parses backend
+    `.py`, builds `class -> declared_attrs`, rewrites usages with high
+    confidence, handles import aliases. 4 unit tests.
+  - **Live calc verification (after applying all fixups):** `POST /api/calculations`
+    (camelCase) → 201; (snake_case) → 201; `GET /api/calculations?session_ids=…`
+    → 200 with proper JSON. Build-then-run-then-call pipeline works end-to-end.
+  - **Env:** Bumped `typing_extensions` ≥4.14.0 (was downgraded to 4.12.0 by a
+    workspace install) so `google-genai` SDK loads → primary_available=true.
+- **2026-02-13 (later in same session)**:
+  - **Stuck-pipeline recovery shipped** — `engines/recovery_engine.py`
     with `sweep_stale_pipelines()` (called on FastAPI startup; reverts any project in
     `Generating/Building/Repair/Acceptance` older than 90s to its safest prior checkpoint
     and emits `pipeline.aborted` event) and `manual_recover(project_id)` (exposed via
     `POST /api/projects/{id}/recover`). Frontend wires a recovery banner on Cockpit + Build
-    pages and a "stuck · recover" badge on Dashboard cards. Tested: both previously stuck
-    user projects (`a2a7b1c77270`, `a6ed1376e046`) auto-recovered to `Plan` on the next
-    backend boot. 4 unit tests in `tests/test_recovery_engine.py` all pass.
+    pages and a "stuck · recover" badge on Dashboard cards. 4 unit tests pass.
   - **Master reference doc** created at `/app/memory/REFERENCE.md` — single entry point
     for any AI agent to find pick-up directions, repo layout, API map, Mongo schema,
     "Real / Working" list, and stuck-pipeline troubleshooting.
