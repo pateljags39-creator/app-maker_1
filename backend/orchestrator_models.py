@@ -37,6 +37,11 @@ class Project(BaseModel):
     last_build_status: str | None = None
     last_acceptance_status: str | None = None
     last_export_path: str | None = None
+    # Phase 4: rework / ingest existing project
+    ingested: bool = False
+    ingest_source: str = ""   # "zip:<filename>" | "url:<https://...>"
+    ingest_status: str = ""   # extracting | cloning | deriving | complete | complete_with_warning | failed
+    ingest_error: str = ""
     created_at: float = Field(default_factory=now)
     updated_at: float = Field(default_factory=now)
 

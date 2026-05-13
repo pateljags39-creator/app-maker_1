@@ -5,26 +5,24 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 SQLALCHEMY_DATABASE_URL = "sqlite:///./app.db"
 
 # Create the SQLAlchemy engine
-# connect_args={"check_same_thread": False} is needed for SQLite when using multiple threads,
-# which FastAPI might do.
+# connect_args is needed for SQLite to allow multiple threads to access the same connection
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
 )
 
 # Create a SessionLocal class
-# Each instance of SessionLocal will be a database session.
+# Each instance of SessionLocal will be a database session
 # The `autocommit=False` and `autoflush=False` settings ensure that changes are not
-# committed automatically and are not flushed to the database until explicitly told to.
-# `bind=engine` connects this session to our database engine.
+# committed until explicitly told to, and that objects are not flushed to the database
+# until a commit or explicit flush.
+# `bind=engine` connects this sessionmaker to our engine.
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Base class for our models
-# This is the base class that our SQLAlchemy models will inherit from.
-# It's crucial that this is declared only once and imported by all models.
+# Declare the Base class for our SQLAlchemy models
+# This Base class will be inherited by all our ORM models.
 Base = declarative_base()
 
 # Dependency to get a database session
-# This function can be used with FastAPI's Depends to manage database sessions.
 def get_db():
     db = SessionLocal()
     try:

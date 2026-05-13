@@ -2,77 +2,30 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Custom styles or overrides can go here */
+/* You can add custom CSS here if needed, but Tailwind should cover most styling. */
+/* For example, if you need to define a custom scrollbar or specific global styles not covered by Tailwind. */
+
 body {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Inter', sans-serif; /* Or any other preferred font */
   @apply bg-gray-100 text-gray-900;
 }
 
-#root {
-  @apply min-h-screen flex flex-col;
+/* Custom scrollbar styles (optional) */
+/*
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
 
-/* Basic button styles */
-.btn-primary {
-  @apply bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition-colors duration-200;
+::-webkit-scrollbar-track {
+  @apply bg-gray-200;
 }
 
-.btn-secondary {
-  @apply bg-gray-300 text-gray-800 px-4 py-2 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50 transition-colors duration-200;
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-400 rounded-full;
 }
 
-.btn-danger {
-  @apply bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 transition-colors duration-200;
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-500;
 }
-
-/* Form input styles */
-.input-field {
-  @apply block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm;
-}
-
-.label-field {
-  @apply block text-sm font-medium text-gray-700;
-}
-
-/* Card styles */
-.card {
-  @apply bg-white shadow-md rounded-lg p-4;
-}
-
-/* Modal styles */
-.modal-overlay {
-  @apply fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50;
-}
-
-.modal-content {
-  @apply relative bg-white rounded-lg shadow-xl p-6 max-w-lg w-full mx-auto;
-}
-
-.modal-header {
-  @apply flex justify-between items-center pb-3 border-b border-gray-200 mb-4;
-}
-
-.modal-title {
-  @apply text-xl font-semibold text-gray-900;
-}
-
-.modal-close-button {
-  @apply text-gray-400 hover:text-gray-600 text-2xl leading-none;
-}
-
-/* Kanban board specific styles */
-.kanban-column {
-  @apply flex-shrink-0 w-80 bg-gray-200 rounded-lg p-4 mr-4;
-}
-
-.kanban-column-header {
-  @apply text-lg font-semibold mb-4 text-gray-800;
-}
-
-.kanban-task-list {
-  @apply space-y-3;
-}
-
-.kanban-task-card {
-  @apply bg-white shadow-sm rounded-md p-3 cursor-pointer hover:bg-gray-50 transition-colors duration-150;
-}
+*/

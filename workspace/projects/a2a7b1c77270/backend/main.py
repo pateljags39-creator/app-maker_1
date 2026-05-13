@@ -1,22 +1,79 @@
-import uvicorn
+import os
 from datetime import datetime, timedelta
 from typing import List, Optional
 
+import uvicorn
 from fastapi import FastAPI, Depends, HTTPException, status, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session, joinedload
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from sqlalchemy.orm import Session, selectinload
+from passlib.context import CryptContext
+from jose import JWTError, jwt
 
-from database import SessionLocal, engine, Base
+# Absolute imports from project structure
+from database import Base, engine, SessionLocal
 import models
 import schemas
 
-# Create database tables
-Base.metadata.create_all(bind=engine)
+# --- Configuration for JWT ---
+# In a real application, these should be loaded from environment variables
+SECRET_KEY = os.getenv("SECRET_KEY", "super-secret-key-for-development-only")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/token")
+
+# --- Utility Functions for Authentication ---
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password: str) -> str:
+    return pwd_context.hash(password)
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise credentials_exception
+        token_data = schemas.TokenData(email=email)
+    except JWTError:
+        raise credentials_exception
+    user = db.query(models.User).filter(models.User.email == token_data.email).first()
+    if user is None:
+        raise credentials_exception
+    return user
+
+# --- FastAPI Application Setup ---
 
 app = FastAPI(
     title="Team Todo App API",
-    description="API for managing projects, tasks, statuses, users, and comments.",
-    version="0.1.0",
+    description="API for managing projects, tasks, and users in a collaborative environment.",
+    version="1.0.0",
 )
 
 # CORS Middleware
@@ -28,213 +85,233 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
-# Dependency to get the DB session
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# --- Database Initialization ---
+@app.on_event("startup")
+def on_startup():
+    # Create all database tables
+    Base.metadata.create_all(bind=engine)
+    print("Database tables created or already exist.")
 
-router = APIRouter(prefix="/api")
+# --- API Router ---
+api_router = APIRouter(prefix="/api")
 
 # --- User Endpoints ---
-@router.get("/users", response_model=List[schemas.User])
-def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    """
-    Retrieve a list of all users.
-    """
-    users = db.query(models.User).offset(skip).limit(limit).all()
+
+@api_router.post("/users", response_model=schemas.User, status_code=status.HTTP_201_CREATED)
+def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+    db_user = db.query(models.User).filter(models.User.email == user.email).first()
+    if db_user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+    
+    hashed_password = get_password_hash(user.password)
+    db_user = models.User(email=user.email, password_hash=hashed_password)
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+@api_router.post("/token", response_model=schemas.Token)
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == form_data.username).first()
+    if not user or not verify_password(form_data.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.email}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@api_router.get("/users/me", response_model=schemas.User)
+async def read_users_me(current_user: models.User = Depends(get_current_user)):
+    return current_user
+
+@api_router.get("/users", response_model=List[schemas.User])
+def read_users(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    # Only allow listing users if authenticated
+    users = db.query(models.User).all()
     return users
 
 # --- Project Endpoints ---
-@router.get("/projects", response_model=List[schemas.Project])
-def read_projects(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    """
-    Retrieve a list of all projects.
-    """
-    projects = db.query(models.Project).offset(skip).limit(limit).all()
+
+@api_router.get("/projects", response_model=List[schemas.Project])
+def read_projects(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    projects = db.query(models.Project).filter(models.Project.owner_id == current_user.id).all()
     return projects
 
-@router.post("/projects", response_model=schemas.Project, status_code=status.HTTP_201_CREATED)
-def create_project(project: schemas.ProjectCreate, db: Session = Depends(get_db)):
-    """
-    Create a new project.
-    """
-    db_project = models.Project(**project.model_dump())
+@api_router.post("/projects", response_model=schemas.Project, status_code=status.HTTP_201_CREATED)
+def create_project(project: schemas.ProjectCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    db_project = models.Project(**project.model_dump(), owner_id=current_user.id)
     db.add(db_project)
+    db.commit()
+    db.refresh(db_project)
+
+    # Create default statuses for the new project
+    default_status_names = [
+        ("To Do", False),
+        ("In Progress", False),
+        ("Done", True)
+    ]
+    for name, is_completion in default_status_names:
+        db_status = models.Status(
+            project_id=db_project.id,
+            name=name,
+            is_completion_state=is_completion
+        )
+        db.add(db_status)
+    db.commit()
+    db.refresh(db_project) # Refresh again to load relationships if any were added by status creation
+
+    return db_project
+
+@api_router.get("/projects/{project_id}", response_model=schemas.Project)
+def read_project(project_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    project = db.query(models.Project).options(
+        selectinload(models.Project.tasks).selectinload(models.Task.assignee),
+        selectinload(models.Project.tasks).selectinload(models.Task.status),
+        selectinload(models.Project.statuses)
+    ).filter(models.Project.id == project_id, models.Project.owner_id == current_user.id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    return project
+
+@api_router.put("/projects/{project_id}", response_model=schemas.Project)
+def update_project(project_id: int, project_update: schemas.ProjectUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    db_project = db.query(models.Project).filter(models.Project.id == project_id, models.Project.owner_id == current_user.id).first()
+    if not db_project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    
+    for key, value in project_update.model_dump(exclude_unset=True).items():
+        setattr(db_project, key, value)
+    
     db.commit()
     db.refresh(db_project)
     return db_project
 
-@router.get("/projects/{project_id}", response_model=schemas.ProjectWithDetails)
-def read_project(project_id: int, db: Session = Depends(get_db)):
-    """
-    Retrieve detailed information for a single project, including its associated tasks and statuses.
-    """
-    project = db.query(models.Project).options(
-        joinedload(models.Project.tasks).joinedload(models.Task.assignee),
-        joinedload(models.Project.statuses)
-    ).filter(models.Project.id == project_id).first()
-    if project is None:
+@api_router.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_project(project_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    db_project = db.query(models.Project).filter(models.Project.id == project_id, models.Project.owner_id == current_user.id).first()
+    if not db_project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    return project
+    
+    db.delete(db_project)
+    db.commit()
+    return {"ok": True}
 
 # --- Task Endpoints ---
-@router.post("/projects/{project_id}/tasks", response_model=schemas.Task, status_code=status.HTTP_201_CREATED)
-def create_task(project_id: int, task: schemas.TaskCreate, db: Session = Depends(get_db)):
-    """
-    Create a new task within a specific project.
-    """
-    db_project = db.query(models.Project).filter(models.Project.id == project_id).first()
-    if db_project is None:
+
+@api_router.post("/projects/{project_id}/tasks", response_model=schemas.Task, status_code=status.HTTP_201_CREATED)
+def create_task_for_project(project_id: int, task: schemas.TaskCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    project = db.query(models.Project).filter(models.Project.id == project_id, models.Project.owner_id == current_user.id).first()
+    if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    
+    # Ensure the status_id belongs to this project
+    status_obj = db.query(models.Status).filter(models.Status.id == task.status_id, models.Status.project_id == project_id).first()
+    if not status_obj:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Status not found or does not belong to this project")
 
-    # Ensure the initial status_id belongs to this project
-    if task.status_id:
-        db_status = db.query(models.Status).filter(
-            models.Status.id == task.status_id,
-            models.Status.project_id == project_id
+    db_task = models.Task(**task.model_dump(), project_id=project_id, created_at=datetime.utcnow())
+    db.add(db_task)
+    db.commit()
+    db.refresh(db_task)
+    return db_task
+
+@api_router.put("/tasks/{task_id}", response_model=schemas.Task)
+def update_task(task_id: int, task_update: schemas.TaskUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    db_task = db.query(models.Task).options(
+        selectinload(models.Task.project)
+    ).filter(models.Task.id == task_id).first()
+    
+    if not db_task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    
+    # Check if the current user owns the project associated with the task
+    if db_task.project.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to update this task")
+
+    # Handle status change and closed_at
+    if task_update.status_id is not None and task_update.status_id != db_task.status_id:
+        new_status = db.query(models.Status).filter(
+            models.Status.id == task_update.status_id,
+            models.Status.project_id == db_task.project_id
         ).first()
-        if db_status is None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid status_id for this project")
-
-    db_task = models.Task(**task.model_dump(), project_id=project_id, created_at=datetime.now())
-    db.add(db_task)
-    db.commit()
-    db.refresh(db_task)
-    return db_task
-
-@router.put("/tasks/{task_id}", response_model=schemas.Task)
-def update_task(task_id: int, task_update: schemas.TaskUpdate, db: Session = Depends(get_db)):
-    """
-    Update an existing task's details, such as its status, assignee, or description.
-    Handles setting/unsetting `closed_at` based on status change.
-    """
-    db_task = db.query(models.Task).filter(models.Task.id == task_id).first()
-    if db_task is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
-
-    old_status_id = db_task.status_id
-    new_status_id = task_update.status_id
-
-    update_data = task_update.model_dump(exclude_unset=True)
-
-    for key, value in update_data.items():
-        setattr(db_task, key, value)
-
-    # Handle closed_at logic if status_id is being updated
-    if new_status_id is not None and new_status_id != old_status_id:
-        new_status = db.query(models.Status).filter(models.Status.id == new_status_id).first()
-        if new_status is None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid status_id")
-
+        if not new_status:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="New status not found or does not belong to this project")
+        
         if new_status.is_completion_state and db_task.closed_at is None:
-            db_task.closed_at = datetime.now()
+            db_task.closed_at = datetime.utcnow()
         elif not new_status.is_completion_state and db_task.closed_at is not None:
-            db_task.closed_at = None
+            db_task.closed_at = None # Reopen task
 
-    db.add(db_task)
+    for key, value in task_update.model_dump(exclude_unset=True).items():
+        setattr(db_task, key, value)
+    
     db.commit()
     db.refresh(db_task)
     return db_task
 
-@router.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_task(task_id: int, db: Session = Depends(get_db)):
-    """
-    Delete a task.
-    """
-    db_task = db.query(models.Task).filter(models.Task.id == task_id).first()
-    if db_task is None:
+@api_router.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_task(task_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    db_task = db.query(models.Task).options(
+        selectinload(models.Task.project)
+    ).filter(models.Task.id == task_id).first()
+    
+    if not db_task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
-
+    
+    if db_task.project.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to delete this task")
+    
     db.delete(db_task)
     db.commit()
-    return
-
-# --- Status Endpoints ---
-@router.post("/projects/{project_id}/statuses", response_model=schemas.Status, status_code=status.HTTP_201_CREATED)
-def create_status(project_id: int, status_create: schemas.StatusCreate, db: Session = Depends(get_db)):
-    """
-    Create a new custom status for a specific project.
-    """
-    db_project = db.query(models.Project).filter(models.Project.id == project_id).first()
-    if db_project is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-
-    db_status = models.Status(**status_create.model_dump(), project_id=project_id)
-    db.add(db_status)
-    db.commit()
-    db.refresh(db_status)
-    return db_status
+    return {"ok": True}
 
 # --- Comment Endpoints ---
-@router.get("/tasks/{task_id}/comments", response_model=List[schemas.Comment])
-def read_comments_for_task(task_id: int, db: Session = Depends(get_db)):
-    """
-    List all comments for a specific task.
-    """
-    db_task = db.query(models.Task).filter(models.Task.id == task_id).first()
-    if db_task is None:
+
+@api_router.post("/tasks/{task_id}/comments", response_model=schemas.Comment, status_code=status.HTTP_201_CREATED)
+def create_comment_for_task(task_id: int, comment: schemas.CommentCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    task = db.query(models.Task).options(
+        selectinload(models.Task.project)
+    ).filter(models.Task.id == task_id).first()
+    
+    if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    
+    # Allow project owner or assignee to comment
+    if task.project.owner_id != current_user.id and task.assignee_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to comment on this task")
 
-    comments = db.query(models.Comment).filter(models.Comment.task_id == task_id).all()
-    return comments
-
-@router.post("/tasks/{task_id}/comments", response_model=schemas.Comment, status_code=status.HTTP_201_CREATED)
-def create_comment(task_id: int, comment_create: schemas.CommentCreate, db: Session = Depends(get_db)):
-    """
-    Add a new comment to a specific task.
-    """
-    db_task = db.query(models.Task).filter(models.Task.id == task_id).first()
-    if db_task is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
-
-    db_comment = models.Comment(**comment_create.model_dump(), task_id=task_id, created_at=datetime.now())
+    db_comment = models.Comment(**comment.model_dump(), task_id=task_id, user_id=current_user.id, created_at=datetime.utcnow())
     db.add(db_comment)
     db.commit()
     db.refresh(db_comment)
     return db_comment
 
-# --- Metrics Endpoints ---
-@router.get("/projects/{project_id}/metrics", response_model=schemas.ProjectMetrics)
-def get_project_metrics(project_id: int, db: Session = Depends(get_db)):
-    """
-    Calculate and retrieve completion metrics (e.g., average cycle time) for a project.
-    """
-    project = db.query(models.Project).filter(models.Project.id == project_id).first()
-    if project is None:
+@api_router.get("/tasks/{task_id}/comments", response_model=List[schemas.Comment])
+def read_comments_for_task(task_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    task = db.query(models.Task).options(
+        selectinload(models.Task.project)
+    ).filter(models.Task.id == task_id).first()
+    
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    
+    # Allow project owner or assignee to view comments
+    if task.project.owner_id != current_user.id and task.assignee_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view comments for this task")
+
+    comments = db.query(models.Comment).filter(models.Comment.task_id == task_id).all()
+    return comments
+
+# --- Status Endpoints (for project-specific statuses) ---
+@api_router.get("/projects/{project_id}/statuses", response_model=List[schemas.Status])
+def read_project_statuses(project_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    project = db.query(models.Project).filter(models.Project.id == project_id, models.Project.owner_id == current_user.id).first()
+    if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-
-    tasks = db.query(models.Task).filter(models.Task.project_id == project_id).all()
-
-    total_tasks = len(tasks)
-    completed_tasks = 0
-    total_cycle_time = timedelta(0)
-    cycle_time_count = 0
-
-    for task in tasks:
-        if task.closed_at and task.created_at:
-            # Check if the task's status is a completion state
-            status_obj = db.query(models.Status).filter(models.Status.id == task.status_id).first()
-            if status_obj and status_obj.is_completion_state:
-                completed_tasks += 1
-                cycle_time = task.closed_at - task.created_at
-                total_cycle_time += cycle_time
-                cycle_time_count += 1
-
-    avg_cycle_time_seconds = None
-    if cycle_time_count > 0:
-        avg_cycle_time_seconds = total_cycle_time.total_seconds() / cycle_time_count
-
-    return schemas.ProjectMetrics(
-        project_id=project_id,
-        total_tasks=total_tasks,
-        completed_tasks=completed_tasks,
-        average_cycle_time_seconds=avg_cycle_time_seconds
-    )
-
-app.include_router(router)
-
-if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    
+    statuses = db.query(models
