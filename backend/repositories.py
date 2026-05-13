@@ -92,7 +92,13 @@ async def get_plan(project_id: str) -> dict | None:
 
 async def add_build(project_id: str, build: dict, repair: dict | None = None) -> dict:
     db = get_db()
-    doc = {"project_id": project_id, "build": build, "repair": repair or {}, "created_at": now()}
+    doc = {
+        "project_id": project_id,
+        "build": build,
+        "repair": repair or {},
+        "overall_status": (build or {}).get("overall_status"),
+        "created_at": now(),
+    }
     await db.builds.insert_one(doc)
     return {k: v for k, v in doc.items() if k != "_id"}
 

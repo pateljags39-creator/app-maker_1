@@ -5,7 +5,7 @@ import {
   Hammer, ClipboardCheck, Package, ChevronLeft, ChevronRight, Activity,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { Sheet, SheetTrigger, SheetContent } from '@/components/ui/sheet';
+import { Sheet, SheetTrigger, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import SystemHealthPill from '@/components/cockpit/SystemHealthPill';
 import StatePill from '@/components/cockpit/StatePill';
 import EventLedgerDrawer from '@/components/cockpit/EventLedgerDrawer';
@@ -116,6 +116,8 @@ export function AppShell({ children, project }) {
                   </button>
                 </SheetTrigger>
                 <SheetContent side="right" className="w-full sm:max-w-[520px] p-0">
+                  <SheetTitle className="sr-only">Event Ledger</SheetTitle>
+                  <SheetDescription className="sr-only">Real-time event stream of orchestrator pipeline activity.</SheetDescription>
                   <EventLedgerDrawer projectId={projectId} />
                 </SheetContent>
               </Sheet>

@@ -1,6 +1,6 @@
 [
   {
-    "content": "Phase 1: POC ✓",
+    "content": "Phase 1: POC ✓ (BUILD=PASS, ACCEPTANCE=PASS, EXPORT=OK twice in a row)",
     "status": "completed"
   },
   {
@@ -12,7 +12,7 @@
     "status": "completed"
   },
   {
-    "content": "Phase 2.2: Backend - API routes + SSE event ledger",
+    "content": "Phase 2.2: Backend - API routes + SSE event ledger (32 routes)",
     "status": "completed"
   },
   {
@@ -24,7 +24,7 @@
     "status": "completed"
   },
   {
-    "content": "Phase 2.5: End-to-end testing via testing_agent_v3 covering all 10 user stories",
-    "status": "in_progress"
+    "content": "Phase 2.5: End-to-end testing via testing_agent_v3 (96% pass; minor issues fixed)",
+    "status": "completed"
   }
 ]
