@@ -7,8 +7,13 @@
   - detects architecture and blocks invalid paths,
   - generates projects into `/app/workspace/projects/<project_id>/`,
   - runs real build/acceptance checks, snapshots, and exports clean ZIPs,
-  - presents a premium UX with an **event ledger** and honest PASS/PARTIAL/FAIL signals.
-- Maintain non‑negotiables: no fake APIs, no silent fallbacks, explicit placeholders, strong secret hygiene.
+  - presents a premium UX with a **real-time event ledger** (SSE) and honest PASS/PARTIAL/FAIL signals.
+- Maintain non‑negotiables: **no fake APIs**, **no silent fallbacks**, explicit placeholders, strong secret hygiene.
+
+**Current status (this sprint):**
+- Phase 1 POC is **complete** and passes reliably.
+- Phase 2 Orchestrator backend + premium cockpit UI is **implemented** and running.
+- Next objective: **end-to-end validation via testing_agent_v3** across all Phase 2 user stories.
 
 ---
 
@@ -27,27 +32,30 @@
 **Steps**
 - Create `/app/backend/poc/test_core.py` that:
   - Initializes LLM gateway: **primary direct Gemini key** → fallback to **Emergent universal key** on quota/429.
-  - Uses hardcoded BRD JSON (notes CRUD) → architecture detection (`full_stack`).
+  - Uses notes CRUD BRD → architecture detection (`full_stack`).
   - Generates a file plan → generates files for frontend+backend+README.
   - Writes to `/app/workspace/projects/poc-<ts>/`.
   - Runs real validations:
-    - backend: venv-free `pip install -r requirements.txt` + `python -c "import main"` (or `uvicorn` import check)
+    - backend: `pip install -r requirements.txt` + `python -c "import main"`
     - frontend: `npm install` + `npm run build`.
-  - On failure: capture stderr/stdout → LLM patch request (single file per patch) → apply → retry (max 2).
-  - Runs acceptance probes: backend has `/api/notes` GET/POST; frontend `dist/` exists.
-  - Exports ZIP with forbidden-globs filter + manifest.
+  - On failure: capture stderr/stdout → LLM patch request (single file per patch) → apply → retry (max 2) with rollback on non-improvement.
+  - Runs acceptance checks + export ZIP with manifest + secret scrub.
 - Add minimal shared utilities used by POC (and later app):
-  - `engines/llm_gateway.py`, `engines/build_engine.py`, `engines/repair_engine.py`, `engines/export_engine.py`, `engines/snapshot_engine.py`.
-- Websearch (best practice) before finalizing build runner + safe patch boundaries:
-  - running npm/pip builds safely in containers
-  - typical Gemini structured JSON prompting + retry patterns
-- Iterate until POC success criteria met (no proceeding otherwise).
+  - `engines/llm_gateway.py`, `engines/generation_engine.py`, `engines/build_engine.py`, `engines/repair_engine.py`, `engines/export_engine.py`, `engines/snapshot_engine.py`, `engines/acceptance_engine.py`.
 
 **Phase 1 Success Criteria**
 - Within 2 repair retries, generated app:
   - backend imports cleanly and exposes required routes,
   - frontend builds and produces `dist/`,
   - export ZIP is produced and verified clean.
+
+**Status (Completed)**
+- ✅ POC completed successfully and reliably:
+  - BUILD=PASS, ACCEPTANCE=PASS, EXPORT=OK **twice in a row**.
+  - Verified primary Gemini quota handling: automatic fallback to Emergent key.
+  - Improved generation reliability:
+    - switched file generation to plaintext,
+    - added deterministic post-fixups (backend imports/Base rules + dependency scanning).
 
 ---
 
@@ -60,38 +68,71 @@
 4. As a user, I trigger generation and can browse the generated file tree and contents.
 5. As a user, I can run build + see logs + repair attempts + final status honestly.
 6. As a user, I can export a clean ZIP and view the export manifest.
+7. As a user, I can see a **real-time event ledger** of everything happening.
 
 **Backend (FastAPI + Mongo) — real orchestrator core**
-- Implement Mongo collections: `projects`, `runs`, `events`, `brds`, `architectures`, `plans`, `build_records`, `repair_records`, `snapshots`, `exports`, `acceptance_results`.
-- Implement engines (real modules, minimal but functional):
-  - `brd_engine`: question set + requirement extraction + maturity score + missing-info flags.
-  - `architecture_engine`: classify + reasoning + block rules.
-  - `plan_engine`: file list + constraints + per-file goals.
-  - `generation_engine`: file-by-file generation using LLM gateway and schema validation.
-  - `build_engine`, `repair_engine`, `snapshot_engine`, `acceptance_engine`, `export_engine`.
-- Add event ledger + SSE:
-  - emit events for every major step (state change, plan, file write, build start/end, repair attempt, export).
-  - `/api/projects/:id/events` (paged) + `/api/projects/:id/events/stream` (SSE).
-- API surface (MVP):
-  - `POST /api/projects`, `GET /api/projects`, `GET /api/projects/{id}`
+- Implemented Mongo persistence and indexes:
+  - Collections: `projects`, `events`, `brds`, `architectures`, `plans`, `builds`, `acceptance`, `exports`.
+  - Modules: `/app/backend/db.py`, `/app/backend/repositories.py`, `/app/backend/orchestrator_models.py`.
+- Implemented engines (real modules, functional):
+  - `engines/llm_gateway.py` (Gemini direct primary + Emergent fallback)
+  - `engines/brd_engine.py`
+  - `engines/architecture_engine.py`
+  - `engines/generation_engine.py` (LLM plan + file generation + deterministic post-fixups for imports/Base + frontend/backend dependency scanning)
+  - `engines/build_engine.py` (real npm + pip builds)
+  - `engines/repair_engine.py` (safe single-file patching, retry budget, rollback)
+  - `engines/snapshot_engine.py`
+  - `engines/acceptance_engine.py` (honest PASS/PARTIAL/FAIL checks + requirement coverage)
+  - `engines/export_engine.py` (clean ZIP + manifest + secret scan)
+- Event ledger + SSE:
+  - In-process pub/sub with persistent event storage: `/app/backend/event_ledger.py`
+  - Endpoints: `/api/projects/{id}/events` (paged) + `/api/projects/{id}/events/stream` (SSE)
+- State machine:
+  - `/app/backend/state_machine.py` enforcing allowed lifecycle transitions.
+- API surface (implemented):
+  - `POST /api/projects`, `GET /api/projects`, `GET /api/projects/{id}`, `DELETE /api/projects/{id}`
   - `POST /api/projects/{id}/brd/questions`, `POST /api/projects/{id}/brd/answers`, `GET /api/projects/{id}/brd`
-  - `POST /api/projects/{id}/architecture/detect`, `POST /api/projects/{id}/architecture/override`
-  - `POST /api/projects/{id}/plan`
-  - `POST /api/projects/{id}/generate` (background task)
+  - `POST /api/projects/{id}/architecture/detect`, `POST /api/projects/{id}/architecture/override`, `GET /api/projects/{id}/architecture`
+  - `POST /api/projects/{id}/plan`, `GET /api/projects/{id}/plan`
+  - `POST /api/projects/{id}/generate`, `GET /api/projects/{id}/generate/status` (background pipeline)
   - `GET /api/projects/{id}/files`, `GET /api/projects/{id}/files/content?path=...`
   - `POST /api/projects/{id}/build`, `GET /api/projects/{id}/builds`
   - `POST /api/projects/{id}/acceptance`, `GET /api/projects/{id}/acceptance`
-  - `POST /api/projects/{id}/export`, `GET /api/projects/{id}/export`
-  - `GET /api/system/health` (LLM provider health + config sanity)
+  - `POST /api/projects/{id}/export`, `GET /api/projects/{id}/export`, `GET /api/projects/{id}/export/manifest`, `GET /api/projects/{id}/export/download`
+  - `GET /api/system/health` (LLM provider health + model)
+- Server entrypoint:
+  - `/app/backend/server.py` is the orchestrator entrypoint; confirms **32 routes registered**.
+  - Health endpoint live; CRUD verified via `curl`.
 
 **Frontend (React + shadcn/tailwind) — “software factory cockpit”**
-- Before building pages: run design pass (layout, typography, state badges, logs viewer, empty/error states).
-- Build pages (MVP): Dashboard, New Project, Project Cockpit, BRD, Architecture, Plan, Files, Build+Repairs, Acceptance, Export.
-- Implement SSE event panel (right drawer) + status badges (Real/Partial/Unsupported/Blocked/Placeholder).
+- Design pass completed and saved to: `/app/memory/design_guidelines.md`
+- Implemented premium cockpit shell:
+  - Dark graphite + electric cyan palette; IBM Plex Sans/Mono typography.
+  - `AppShell` with sidebar nav, top bar (project info + state pill), system health pill, and event ledger right drawer.
+  - Real-time SSE event feed with pause/clear/filter.
+- Implemented 10 pages:
+  1. Dashboard
+  2. New Project
+  3. Cockpit (PhaseStepper + quick stats + recent activity)
+  4. BRD (questions + maturity gauge + requirements)
+  5. Architecture (detect + override + limited prototype gate)
+  6. Plan (plan tree + endpoints + entities)
+  7. Files (file tree + code viewer)
+  8. Build (runs + step details + repair timeline)
+  9. Acceptance (checks matrix + requirement coverage)
+  10. Export (ZIP + manifest + secret scan)
+- Verified renders correctly at preview URL.
 
 **Phase 2 Testing (mandatory)**
-- One full E2E run: create project → BRD answers → architecture → generate → build → acceptance → export.
-- Call testing agent after Phase 2 implementation and fix failures.
+- Run full E2E testing via `testing_agent_v3` covering Phase 2 user stories.
+- Notes for testing agent:
+  - Generation pipeline can take **~2–3 minutes** per run (LLM + npm + pip + build + repair).
+  - Testing should include appropriate waits/polling for state transitions and event stream updates.
+
+**Status (Implemented; requires testing confirmation)**
+- ✅ Backend implemented and running.
+- ✅ Frontend implemented and compiling.
+- ⏭️ Next: testing_agent_v3 end-to-end validation; fix any issues it reports.
 
 ---
 
@@ -107,6 +148,7 @@
 **Scope**
 - `/api/projects/{id}/improve`: feedback → plan → approval gate (optional) → patch → rebuild → acceptance.
 - Diff viewer + patch approvals UI.
+- Snapshot-before-patch and rollback-on-regression are mandatory.
 - Testing agent round.
 
 ---
@@ -123,7 +165,7 @@
 **Scope**
 - ZIP ingest → safe unzip → forbidden-file filtering → workspace staging.
 - Rework engine: analyze → propose plan → apply → rebuild.
-- Expanded repair taxonomy.
+- Expanded repair taxonomy and richer repair records.
 - Testing agent round.
 
 ---
@@ -138,21 +180,21 @@
 5. As a user, the UI feels premium (keyboard shortcuts, command palette, consistent states).
 
 **Scope**
-- Resource discovery pipeline (staged → reviewed → promoted).
-- Acceptance suite coverage expansion.
-- UI polish pass + final testing agent round.
+- Resource discovery pipeline (staged → reviewed → promoted) with license + forbidden-file filtering.
+- Acceptance suite coverage expansion (architecture fit, requirement coverage, placeholder honesty, export hygiene, secret hygiene).
+- UI polish: command palette, keyboard shortcuts, empty/loading/error refinements.
+- Testing agent final round.
 
 ---
 
 ## 3) Next Actions (immediate)
-1. Create workspace dir structure: `/app/workspace/projects/`.
-2. Implement Phase 1 POC modules + `test_core.py` and run it until PASS.
-3. Add backend env handling: Gemini primary key + fallback (backend-only), never emitted.
-4. Once Phase 1 PASS is stable, start Phase 2 orchestrator backend endpoints, then frontend cockpit.
+1. Run **testing_agent_v3** across all Phase 2 user stories (E2E) and capture failures in `test_result.md`.
+2. Fix any issues found (API edge cases, SSE reconnection, UI state mismatches, pipeline timing).
+3. Once Phase 2 tests pass, begin Phase 3 (Improve/Fix + bounded customization + diff/approval UI).
 
 ---
 
 ## 4) Success Criteria
-- Phase 1: POC reliably generates + builds + repairs (≤2 retries) + exports a clean ZIP with manifest.
-- Phase 2: Orchestrator supports full flow with real event ledger + SSE, honest acceptance, and downloadable exports.
+- Phase 1: POC reliably generates + builds + repairs (≤2 retries) + exports a clean ZIP with manifest. ✅ Completed.
+- Phase 2: Orchestrator supports full flow with real event ledger + SSE, honest acceptance, and downloadable exports. **Implemented; pending testing confirmation.**
 - Phase 3+: Improve/fix, bounded customization, rework, and discovery features ship incrementally with snapshots/rollback and repeated testing-agent validation.

@@ -1,0 +1,251 @@
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #242424;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  font-weight: 500;
+  color: #646cff;
+  text-decoration: inherit;
+}
+a:hover {
+  color: #535bf2;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+}
+
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+  width: 100%; /* Ensure root takes full width available */
+}
+
+button {
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: #1a1a1a;
+  cursor: pointer;
+  transition: border-color 0.25s;
+  margin: 0.5rem;
+}
+button:hover {
+  border-color: #646cff;
+}
+button:focus,
+button:focus-visible {
+  outline: 4px auto -webkit-focus-ring-color;
+}
+
+.card {
+  padding: 2em;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color: #213547;
+    background-color: #ffffff;
+  }
+  a:hover {
+    color: #747bff;
+  }
+  button {
+    background-color: #f9f9f9;
+  }
+}
+
+/* Custom styles for the notes app */
+
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+  background-color: #333;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.note-list {
+  list-style: none;
+  padding: 0;
+}
+
+.note-list-item {
+  background-color: #444;
+  margin-bottom: 10px;
+  padding: 15px;
+  border-radius: 5px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.note-list-item h2 {
+  margin: 0;
+  color: #fff;
+  font-size: 1.2em;
+}
+
+.note-list-item .date {
+  font-size: 0.8em;
+  color: #bbb;
+}
+
+.note-detail {
+  text-align: left;
+  background-color: #444;
+  padding: 20px;
+  border-radius: 8px;
+}
+
+.note-detail h1 {
+  color: #fff;
+  margin-top: 0;
+}
+
+.note-detail p {
+  color: #ccc;
+  line-height: 1.6;
+  white-space: pre-wrap; /* Preserve whitespace and line breaks */
+}
+
+.note-detail .date {
+  font-size: 0.9em;
+  color: #bbb;
+  margin-bottom: 20px;
+  display: block;
+}
+
+.note-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  text-align: left;
+  background-color: #444;
+  padding: 20px;
+  border-radius: 8px;
+}
+
+.note-form label {
+  color: #fff;
+  font-weight: bold;
+}
+
+.note-form input[type="text"],
+.note-form textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #555;
+  border-radius: 5px;
+  background-color: #333;
+  color: #eee;
+  font-size: 1em;
+  box-sizing: border-box; /* Include padding in width */
+}
+
+.note-form textarea {
+  min-height: 150px;
+  resize: vertical;
+}
+
+.note-form button {
+  align-self: flex-start;
+}
+
+.actions {
+  margin-top: 20px;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-start;
+}
+
+.link-button {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  padding: 8px 15px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 1em;
+  cursor: pointer;
+  border-radius: 5px;
+  transition: background-color 0.3s;
+}
+
+.link-button:hover {
+  background-color: #0056b3;
+}
+
+.delete-button {
+  background-color: #dc3545;
+}
+
+.delete-button:hover {
+  background-color: #c82333;
+}
+
+.edit-button {
+  background-color: #ffc107;
+  color: #212529; /* Darker text for contrast */
+}
+
+.edit-button:hover {
+  background-color: #e0a800;
+}
+
+.back-button {
+  background-color: #6c757d;
+}
+
+.back-button:hover {
+  background-color: #5a6268;
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+  .container {
+    padding: 10px;
+  }
+  .note-list-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+  }
+  .note-list-item .date {
+    align-self: flex-end;
+  }
+  .actions {
+    flex-direction: column;
+    gap: 5px;
+  }
+  button, .link-button {
+    width: 100%;
+  }
+}
