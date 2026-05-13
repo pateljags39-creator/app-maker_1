@@ -30,7 +30,7 @@ export default function PlanPage() {
   const run = async () => {
     try {
       setBusy(true);
-      await api.triggerGenerate(project.id);
+      await api.runFullPipeline(project.id);
       toast.success('Generation pipeline started');
       refresh();
     } catch (e) {

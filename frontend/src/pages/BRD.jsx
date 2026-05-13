@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import { toast } from 'sonner';
-import { MessageSquareQuote, Wand2, RefreshCw } from 'lucide-react';
+import { MessageSquareQuote, Wand2, RefreshCw, Rocket, ArrowRight } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
@@ -30,9 +30,11 @@ function mapStatus(status) {
 
 export default function BRDPage() {
   const { project, refresh } = useOutletContext();
+  const nav = useNavigate();
   const [brdDoc, setBrdDoc] = useState(null);
   const [loadingQ, setLoadingQ] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [launching, setLaunching] = useState(false);
   const [answers, setAnswers] = useState({}); // qid -> { question, answer }
 
   const load = async () => {
@@ -76,14 +78,72 @@ export default function BRDPage() {
     } finally { setSubmitting(false); }
   };
 
+  const generateApp = async () => {
+    try {
+      setLaunching(true);
+      await api.runFullPipeline(project.id);
+      toast.success('App generation pipeline started \u2014 watch the Event Ledger.');
+      // Take the user to the Cockpit where the pipeline progress is most visible.
+      nav(`/projects/${project.id}`);
+    } catch (e) {
+      const msg = e?.response?.data?.detail || 'Failed to start pipeline';
+      toast.error(msg);
+    } finally {
+      setLaunching(false);
+      refresh();
+    }
+  };
+
   const questions = brdDoc?.questions || [];
   const brd = brdDoc?.brd || {};
   const maturity = brdDoc?.maturity || 0;
   const requirements = brd.requirements || [];
+  const generationReady = requirements.length > 0 && maturity >= 50;
+  const generationPossible = requirements.length > 0;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-2 flex flex-col gap-4">
+        {generationPossible && (
+          <div
+            data-testid="brd-generate-app-banner"
+            className={`surface-1 p-5 border-2 ${generationReady
+              ? 'border-[hsl(var(--primary)/0.45)] bg-[hsl(var(--primary)/0.06)]'
+              : 'border-[hsl(var(--warning)/0.40)] bg-[hsl(var(--warning)/0.05)]'}`}
+          >
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${generationReady
+                  ? 'bg-[hsl(var(--primary)/0.18)] border border-[hsl(var(--primary)/0.40)]'
+                  : 'bg-[hsl(var(--warning)/0.18)] border border-[hsl(var(--warning)/0.40)]'}`}>
+                  <Rocket className={`h-5 w-5 ${generationReady ? 'text-[hsl(var(--primary))]' : 'text-[hsl(var(--warning))]'}`} />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold">
+                    {generationReady
+                      ? `Ready to generate your app (BRD ${maturity}/100)`
+                      : `BRD at ${maturity}/100 \u2014 a few more answers will help, but you can generate now if you want`}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-xl">
+                    One click will run: auto-detect architecture \u2192 generate plan \u2192 generate code \u2192 build (npm + pip)
+                    \u2192 safe repairs (max 2) \u2192 acceptance checks \u2192 export a clean ZIP. Takes about 2\u20133 minutes.
+                    You do <strong>not</strong> need 100% BRD maturity.
+                  </p>
+                </div>
+              </div>
+              <button
+                data-testid="brd-generate-app-button"
+                onClick={generateApp}
+                disabled={launching}
+                className="inline-flex items-center gap-2 rounded-md bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] px-4 py-2 text-sm font-medium hover:bg-[hsl(var(--primary)/0.9)] disabled:opacity-50 shadow-[0_8px_24px_-12px_hsl(var(--primary)/0.7)]"
+              >
+                {launching ? 'Starting\u2026' : 'Generate App'}
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="surface-1 p-5">
           <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
             <div className="flex items-center gap-2">

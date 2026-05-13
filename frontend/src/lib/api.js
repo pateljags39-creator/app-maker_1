@@ -31,6 +31,7 @@ export const api = {
   makePlan: (id) => client.post(`/projects/${id}/plan`).then(r => r.data),
   // generate
   triggerGenerate: (id) => client.post(`/projects/${id}/generate`).then(r => r.data),
+  runFullPipeline: (id) => client.post(`/projects/${id}/run_full_pipeline`).then(r => r.data),
   generateStatus: (id) => client.get(`/projects/${id}/generate/status`).then(r => r.data),
   // files
   listFiles: (id) => client.get(`/projects/${id}/files`).then(r => r.data),

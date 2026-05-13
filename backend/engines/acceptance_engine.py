@@ -147,7 +147,31 @@ def run_acceptance(
             "info" if status == "PASS" else ("warning" if status == "PARTIAL" else "error"),
         ))
 
-    # 6) Requirement coverage (simple keyword mapping)
+    # 6.5) Auto-stubs honesty check
+    stub_marker = workspace / ".factory" / "stubs.json"
+    if stub_marker.exists():
+        try:
+            import json as _json
+            data = _json.loads(stub_marker.read_text(encoding="utf-8"))
+            stubs = data.get("stubs", []) or []
+        except Exception:
+            stubs = []
+        if stubs:
+            ellipsis = "\u2026" if len(stubs) > 5 else ""
+            stub_list = ", ".join(stubs[:5])
+            report.checks.append(CheckResult(
+                "generation.auto_stubs",
+                "PARTIAL",
+                (
+                    f"{len(stubs)} module(s) were auto-stubbed because the LLM "
+                    f"referenced them via import but did not generate them: "
+                    f"{stub_list}{ellipsis}. "
+                    "Build passes but those parts are placeholders."
+                ),
+                "warning",
+            ))
+
+    # 7) Requirement coverage (simple keyword mapping)
     coverage: list[dict[str, Any]] = []
     requirements = brd.get("requirements", []) or []
     workspace_files: list[Path] = [p for p in workspace.rglob("*") if p.is_file()]

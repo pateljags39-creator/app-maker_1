@@ -1,30 +1,18 @@
 [
   {
-    "content": "Phase 1: POC ✓ (BUILD=PASS, ACCEPTANCE=PASS, EXPORT=OK twice in a row)",
-    "status": "completed"
+    "content": "Fix: one-click \"Generate App\" backend endpoint that chains architecture-detect → plan → generate",
+    "status": "in_progress"
   },
   {
-    "content": "Phase 2.0: Design pass for orchestrator cockpit UI",
-    "status": "completed"
+    "content": "Fix: BRD page shows prominent \"Generate App\" CTA once maturity ≥ 50",
+    "status": "pending"
   },
   {
-    "content": "Phase 2.1: Backend - Mongo models + state machine + event ledger + repositories",
-    "status": "completed"
+    "content": "Fix: Cockpit \"Run pipeline\" disabled logic + add state-aware next-action CTA",
+    "status": "pending"
   },
   {
-    "content": "Phase 2.2: Backend - API routes + SSE event ledger (32 routes)",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 2.3: Frontend - cockpit shell + theme tokens + routing + API client + SSE hook + reusable components",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 2.4: Frontend - 10 pages (Dashboard, NewProject, Cockpit, BRD, Architecture, Plan, Files, Build, Acceptance, Export)",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 2.5: End-to-end testing via testing_agent_v3 (96% pass; minor issues fixed)",
-    "status": "completed"
+    "content": "Verify the Scientific Calculator project can finish end-to-end with one click",
+    "status": "pending"
   }
 ]

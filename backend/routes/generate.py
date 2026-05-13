@@ -19,13 +19,69 @@ router = APIRouter(prefix="/projects/{project_id}", tags=["generate"])
 _active_jobs: dict[str, asyncio.Task] = {}
 
 
-async def _run_pipeline(project_id: str) -> None:
+async def _run_pipeline(project_id: str, auto_prepare: bool = False) -> None:
     led = get_ledger()
     proj = await repo.get_project(project_id)
     if not proj:
         return
     workspace = Path(proj["workspace_dir"])
     workspace.mkdir(parents=True, exist_ok=True)
+
+    # If auto_prepare is True, ensure architecture + plan exist before generation.
+    if auto_prepare:
+        try:
+            from engines.architecture_engine import detect_architecture
+            from engines.generation_engine import generate_plan as _gen_plan
+            from engines.llm_gateway import LLMGateway as _GW
+            brd_doc = await repo.get_brd(project_id)
+            brd = (brd_doc or {}).get("brd") or {}
+            if not brd or not brd.get("requirements"):
+                await led.emit_simple(project_id, "pipeline.error",
+                                      "Cannot run pipeline: BRD has no requirements yet. Answer some BRD questions first.",
+                                      severity="error")
+                return
+            arch_doc = await repo.get_architecture(project_id)
+            decision = (arch_doc or {}).get("decision") or {}
+            if not decision.get("kind"):
+                await led.emit_simple(project_id, "architecture.auto_detect",
+                                      "Auto-detecting architecture from BRD",
+                                      severity="info")
+                decision = detect_architecture(brd).to_dict()
+                await repo.upsert_architecture(project_id, decision)
+                await repo.set_state(project_id, "Architecture")
+                await led.emit_simple(project_id, "architecture.detected",
+                                      f"Architecture: {decision['kind']}",
+                                      payload={"kind": decision["kind"], "blocked": decision["blocked"]},
+                                      severity="warning" if decision["blocked"] else "success")
+            if decision.get("blocked"):
+                await led.emit_simple(project_id, "pipeline.error",
+                                      f"Architecture blocked: {decision.get('block_reasons')}. "
+                                      "Visit the Architecture page to override.",
+                                      severity="error")
+                return
+            plan_doc = await repo.get_plan(project_id)
+            if not plan_doc or not (plan_doc.get("plan") or {}).get("files"):
+                await led.emit_simple(project_id, "plan.auto_generate",
+                                      "Auto-generating file plan",
+                                      severity="info")
+                gw = _GW()
+                plan = await _gen_plan(gw, brd, decision)
+                await repo.upsert_plan(project_id, plan)
+                await repo.set_state(project_id, "Plan")
+                await led.emit_simple(project_id, "plan.generated",
+                                      f"Plan with {len(plan.get('files', []))} files",
+                                      payload={"files": len(plan.get("files", []))},
+                                      severity="success")
+        except Exception as e:
+            await led.emit_simple(project_id, "pipeline.error",
+                                  f"Auto-prepare failed: {type(e).__name__}: {str(e)[:200]}",
+                                  severity="error")
+            return
+        # Refresh project doc post-prep
+        proj = await repo.get_project(project_id)
+        if not proj:
+            return
+
     brd_doc = await repo.get_brd(project_id)
     arch_doc = await repo.get_architecture(project_id)
     brd = (brd_doc or {}).get("brd") or {}
@@ -140,6 +196,26 @@ async def trigger_generate(project_id: str, background: BackgroundTasks):
     task = asyncio.create_task(_run_pipeline(project_id))
     _active_jobs[project_id] = task
     return {"status": "started", "project_id": project_id}
+
+
+@router.post("/run_full_pipeline")
+async def run_full_pipeline(project_id: str):
+    """One-click: auto-detect architecture, auto-generate plan, then run the full pipeline.
+
+    Used by the dashboard / BRD page once BRD has enough maturity.
+    """
+    proj = await repo.get_project(project_id)
+    if not proj:
+        raise HTTPException(404, "project_not_found")
+    if project_id in _active_jobs and not _active_jobs[project_id].done():
+        raise HTTPException(409, "pipeline_already_running")
+    brd_doc = await repo.get_brd(project_id)
+    brd = (brd_doc or {}).get("brd") or {}
+    if not brd or not brd.get("requirements"):
+        raise HTTPException(400, "brd_not_ready: answer some BRD questions first")
+    task = asyncio.create_task(_run_pipeline(project_id, auto_prepare=True))
+    _active_jobs[project_id] = task
+    return {"status": "started", "project_id": project_id, "mode": "auto_prepare"}
 
 
 @router.get("/generate/status")

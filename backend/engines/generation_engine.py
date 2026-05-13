@@ -281,6 +281,9 @@ async def generate_project(
     _post_fixups(workspace)
     _ensure_frontend_deps(workspace)
     _ensure_backend_deps(workspace)
+    _stub_missing_relative_imports(workspace)
+    _stub_missing_named_exports_js(workspace)
+    _stub_missing_python_module_attrs(workspace)
 
     # Also drop a minimal package-lock-free .gitignore for honesty in exports.
     (workspace / ".gitignore").write_text(
@@ -443,7 +446,20 @@ def _ensure_backend_deps(workspace: Path) -> None:
     if not req.exists():
         return
     text = req.read_text(encoding="utf-8")
-    have_lower = {line.split("==")[0].split(">=")[0].split("<=")[0].lower().strip(): line for line in text.splitlines() if line.strip() and not line.strip().startswith("#")}
+
+    def _pkg_key(spec: str) -> str:
+        """Normalize a requirements.txt line to the bare package name (lowercase),
+        stripping version specifiers, extras like `[standard]`, env markers, etc."""
+        s = spec.strip()
+        # strip env markers / comments
+        for sep in ("==", ">=", "<=", "~=", "!=", ">", "<", ";"):
+            if sep in s:
+                s = s.split(sep)[0]
+        # strip extras
+        s = _re.sub(r"\[[^\]]+\]", "", s)
+        return s.strip().lower()
+
+    have = {_pkg_key(line): line for line in text.splitlines() if line.strip() and not line.strip().startswith("#")}
 
     imp_rx = _re.compile(r"^\s*(?:from|import)\s+([\w_.]+)", _re.MULTILINE)
     found: set[str] = set()
@@ -462,10 +478,9 @@ def _ensure_backend_deps(workspace: Path) -> None:
                 continue
             found.add(top.lower())
 
-    # Map well-known module names to pypi packages
     module_to_pkg = {
         "fastapi": "fastapi==0.110.1",
-        "uvicorn": "uvicorn[standard]==0.25.0",
+        "uvicorn": "uvicorn[standard]>=0.25.0",
         "sqlalchemy": "sqlalchemy>=2.0.0",
         "pydantic": "pydantic>=2.6.0",
         "multipart": "python-multipart>=0.0.9",
@@ -490,15 +505,312 @@ def _ensure_backend_deps(workspace: Path) -> None:
         pkg_line = module_to_pkg.get(top)
         if not pkg_line:
             continue
-        pkg_name = pkg_line.split("==")[0].split(">=")[0].split("[")[0].lower()
-        if pkg_name in have_lower:
+        pkg_name = _pkg_key(pkg_line)
+        if pkg_name in have:
             continue
         added.append(pkg_line)
-        have_lower[pkg_name] = pkg_line
+        have[pkg_name] = pkg_line
 
     if added:
         new_text = text.rstrip("\n") + "\n" + "\n".join(added) + "\n"
         req.write_text(new_text, encoding="utf-8")
+
+
+def _stub_missing_relative_imports(workspace: Path) -> None:
+    """Scan frontend JS/JSX files for relative imports that don't resolve to
+    any existing file, and write minimal pass-through stubs so the build does
+    not fail with 'Could not resolve' errors.
+
+    This handles the common LLM failure where a component imports a helper
+    module (e.g. '../utils/calculatorLogic') but no plan entry for that helper
+    was generated.
+    """
+    import re as _re
+    fe = workspace / "frontend"
+    if not fe.exists():
+        return
+    src = fe / "src"
+    if not src.exists():
+        return
+    imp_rx = _re.compile(r"""(?:import\s+[^'"\n]*?from\s+['"]([^'"]+)['"])|(?:import\s+['"]([^'"]+)['"])""")
+    exts = ("", ".js", ".jsx", ".ts", ".tsx", "/index.js", "/index.jsx", "/index.ts", "/index.tsx")
+
+    def _resolve(from_file: Path, spec: str) -> Path | None:
+        base = (from_file.parent / spec).resolve()
+        try:
+            base.relative_to(fe.resolve())
+        except ValueError:
+            return None
+        for e in exts:
+            p = Path(str(base) + e)
+            if p.exists() and p.is_file():
+                return p
+        return None
+
+    created: list[Path] = []
+    for p in src.rglob("*.js*"):
+        if "node_modules" in p.parts:
+            continue
+        try:
+            text = p.read_text("utf-8", "replace")
+        except Exception:
+            continue
+        for m in imp_rx.finditer(text):
+            spec = m.group(1) or m.group(2)
+            if not spec:
+                continue
+            # Only handle relative (./ or ../) imports here.
+            if not spec.startswith(("./", "../")):
+                continue
+            if spec.endswith(".css") or spec.endswith(".scss") or spec.endswith(".png") or spec.endswith(".svg") or spec.endswith(".jpg"):
+                continue
+            resolved = _resolve(p, spec)
+            if resolved is not None:
+                continue
+            # Determine stub file path.
+            target = (p.parent / spec).resolve()
+            try:
+                target.relative_to(fe.resolve())
+            except ValueError:
+                continue
+            stub_path = Path(str(target) + ".js")  # default extension
+            if stub_path.exists():
+                continue
+            stub_path.parent.mkdir(parents=True, exist_ok=True)
+            # Heuristic stub content: export a Proxy so ANY property access /
+            # method call becomes a safe no-op returning empty value. The build
+            # succeeds; runtime behaviour is clearly inert (user UI still renders).
+            content = (
+                "// AUTO-STUB by Local App Creator post-fixup.\n"
+                f"// Original import: '{spec}' \u2014 the LLM referenced this module but did not generate it.\n"
+                "// This stub lets the build pass; replace with a real implementation.\n"
+                "const _noop = () => null;\n"
+                "const _handler = {\n"
+                "  get(target, prop) {\n"
+                "    if (prop === '__esModule') return true;\n"
+                "    if (prop === 'default') return _stub;\n"
+                "    return _noop;\n"
+                "  },\n"
+                "  apply: () => null,\n"
+                "};\n"
+                "const _stub = new Proxy(function(){}, _handler);\n"
+                "export default _stub;\n"
+                f"export const __LAC_STUB__ = '{spec}';\n"
+            )
+            stub_path.write_text(content, encoding="utf-8")
+            created.append(stub_path)
+    # Record stubs in a workspace marker so acceptance can report them honestly.
+    if created:
+        marker = workspace / ".factory" / "stubs.json"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        import json as _json
+        marker.write_text(_json.dumps(
+            {"stubs": [str(p.relative_to(workspace)) for p in created]},
+            indent=2,
+        ), encoding="utf-8")
+    return None
+
+
+def _stub_missing_named_exports_js(workspace: Path) -> None:
+    """For each `import { X, Y } from './foo'` in the frontend, ensure ./foo
+    actually exports X and Y. If not, append safe fallback exports to the
+    target file so Vite/Rollup can build.
+
+    This handles the common LLM cross-file inconsistency where one file
+    imports a symbol the LLM forgot to put in the other file.
+    """
+    import re as _re
+    fe = workspace / "frontend"
+    if not fe.exists():
+        return
+    src = fe / "src"
+    if not src.exists():
+        return
+
+    # Match `import { a, b as c, d } from './path'` (only relative)
+    named_imp_rx = _re.compile(r"""import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]""")
+    export_rx = _re.compile(
+        r"""(?:^|\n)\s*export\s+(?:default\s+)?(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)"""
+        r"""|(?:^|\n)\s*export\s*\{([^}]+)\}"""
+    )
+    exts = (".js", ".jsx", ".ts", ".tsx")
+
+    def _resolve(from_file: Path, spec: str) -> Path | None:
+        base = (from_file.parent / spec).resolve()
+        try:
+            base.relative_to(fe.resolve())
+        except ValueError:
+            return None
+        for e in ("",) + exts + ("/index.js", "/index.jsx", "/index.ts", "/index.tsx"):
+            p = Path(str(base) + e)
+            if p.exists() and p.is_file():
+                return p
+        return None
+
+    def _exports_in(file: Path) -> set[str]:
+        try:
+            t = file.read_text("utf-8", "replace")
+        except Exception:
+            return set()
+        found: set[str] = set()
+        for m in export_rx.finditer(t):
+            if m.group(1):
+                found.add(m.group(1))
+            elif m.group(2):
+                for part in m.group(2).split(","):
+                    name = part.strip().split(" as ")[-1].strip()
+                    if name:
+                        found.add(name)
+        return found
+
+    appended: list[tuple[str, list[str]]] = []
+    for p in src.rglob("*.js*"):
+        if "node_modules" in p.parts:
+            continue
+        try:
+            text = p.read_text("utf-8", "replace")
+        except Exception:
+            continue
+        for m in named_imp_rx.finditer(text):
+            names_blob = m.group(1)
+            spec = m.group(2)
+            if not spec.startswith(("./", "../")):
+                continue
+            target = _resolve(p, spec)
+            if target is None:
+                continue
+            # Parse requested names
+            requested = []
+            for token in names_blob.split(","):
+                t = token.strip()
+                if not t:
+                    continue
+                # handle `X as Y` -> we care about X (the export name in target)
+                name = t.split(" as ")[0].strip()
+                if name and _re.match(r"^[A-Za-z_$][\w$]*$", name):
+                    requested.append(name)
+            if not requested:
+                continue
+            existing = _exports_in(target)
+            missing = [n for n in requested if n not in existing]
+            if not missing:
+                continue
+            # Append stub exports
+            stub_lines = [
+                "\n// AUTO-STUB: missing named exports added by Local App Creator post-fixup.",
+            ]
+            for n in missing:
+                # Heuristic: SCREAMING_CASE → constant, camelCase → no-op function
+                if n.isupper() or _re.match(r"^[A-Z][A-Z0-9_]*$", n):
+                    stub_lines.append(f"export const {n} = null;")
+                else:
+                    stub_lines.append(f"export const {n} = (...args) => null;")
+            with target.open("a", encoding="utf-8") as fh:
+                fh.write("\n" + "\n".join(stub_lines) + "\n")
+            appended.append((str(target.relative_to(workspace)), missing))
+
+    if appended:
+        marker_path = workspace / ".factory" / "stubs.json"
+        marker_path.parent.mkdir(parents=True, exist_ok=True)
+        import json as _json
+        existing_marker: dict = {}
+        if marker_path.exists():
+            try:
+                existing_marker = _json.loads(marker_path.read_text(encoding="utf-8"))
+            except Exception:
+                existing_marker = {}
+        existing_marker.setdefault("missing_named_exports", []).extend(
+            [{"file": f, "added": names} for f, names in appended]
+        )
+        marker_path.write_text(_json.dumps(existing_marker, indent=2), encoding="utf-8")
+
+
+def _stub_missing_python_module_attrs(workspace: Path) -> None:
+    """For each `<module>.<Attr>` reference in backend Python that points to a
+    sibling module in the same package, ensure <module>.<Attr> is defined.
+    Used to fix cases like `schemas.MemoryUpdate` referenced from main.py but
+    not actually defined in schemas.py.
+
+    Heuristic: only operate on top-level identifiers that are imported via
+    `import schemas` (i.e., the module-as-namespace style).
+    """
+    import re as _re
+    be = workspace / "backend"
+    if not be.exists():
+        return
+    # Find sibling python modules
+    py_files = [p for p in be.rglob("*.py") if "__pycache__" not in p.parts]
+    by_module = {p.stem: p for p in py_files if p.parent == be}
+    if not by_module:
+        return
+
+    # For each python file, find:
+    #   1) "import schemas" style imports (record which modules are namespace-imported)
+    #   2) references "schemas.<Identifier>"
+    namespace_rx = _re.compile(r"^\s*(?:import\s+([\w_.]+)|from\s+\.?\s+import\s+([\w_]+))", _re.MULTILINE)
+    appended: list[tuple[str, list[str]]] = []
+
+    for p in py_files:
+        try:
+            text = p.read_text("utf-8", "replace")
+        except Exception:
+            continue
+        # Collect modules namespace-imported here.
+        ns_modules: set[str] = set()
+        for m in namespace_rx.finditer(text):
+            mod = m.group(1) or m.group(2) or ""
+            top = mod.split(".")[0]
+            if top in by_module and top != p.stem:
+                ns_modules.add(top)
+        if not ns_modules:
+            continue
+        # For each `<mod>.<Attr>` find missing attrs.
+        for mod in ns_modules:
+            target = by_module[mod]
+            try:
+                target_text = target.read_text("utf-8", "replace")
+            except Exception:
+                continue
+            attrs_used: set[str] = set()
+            for m in _re.finditer(rf"\b{_re.escape(mod)}\.([A-Z][\w_]*)\b", text):
+                attrs_used.add(m.group(1))
+            if not attrs_used:
+                continue
+            existing_attrs: set[str] = set()
+            for m in _re.finditer(r"(?:^|\n)\s*(?:class|def)\s+([A-Z][\w_]*)", target_text):
+                existing_attrs.add(m.group(1))
+            for m in _re.finditer(r"(?:^|\n)\s*([A-Z][\w_]*)\s*=", target_text):
+                existing_attrs.add(m.group(1))
+            missing = sorted(attrs_used - existing_attrs)
+            if not missing:
+                continue
+            # Append safe stubs to the target module.
+            stub_lines = [
+                "",
+                f"# AUTO-STUB: missing module attributes referenced by {p.relative_to(workspace)} (Local App Creator post-fixup)",
+                "from pydantic import BaseModel as _AutoBaseModel",
+            ]
+            for name in missing:
+                # Default to BaseModel subclass with no fields (works for Pydantic).
+                stub_lines.append(f"class {name}(_AutoBaseModel):\n    pass\n")
+            with target.open("a", encoding="utf-8") as fh:
+                fh.write("\n" + "\n".join(stub_lines) + "\n")
+            appended.append((str(target.relative_to(workspace)), missing))
+
+    if appended:
+        marker_path = workspace / ".factory" / "stubs.json"
+        marker_path.parent.mkdir(parents=True, exist_ok=True)
+        import json as _json
+        existing_marker: dict = {}
+        if marker_path.exists():
+            try:
+                existing_marker = _json.loads(marker_path.read_text(encoding="utf-8"))
+            except Exception:
+                existing_marker = {}
+        existing_marker.setdefault("missing_python_attrs", []).extend(
+            [{"file": f, "added": names} for f, names in appended]
+        )
+        marker_path.write_text(_json.dumps(existing_marker, indent=2), encoding="utf-8")
 
 
 # ---------- emergency stubs (clearly labelled) ----------

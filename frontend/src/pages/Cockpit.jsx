@@ -22,14 +22,28 @@ function QuickStat({ label, value, status, testid }) {
 export default function Cockpit() {
   const { project, refresh } = useOutletContext();
   const [running, setRunning] = useState(false);
+  const [pipelineRunning, setPipelineRunning] = useState(false);
 
   const { events: live } = useEventStream(api.eventsStreamUrl(project.id), { enabled: !!project?.id });
+
+  useEffect(() => {
+    let alive = true;
+    const poll = async () => {
+      try {
+        const s = await api.generateStatus(project.id);
+        if (alive) setPipelineRunning(!!s.running);
+      } catch (_) { /* ignore */ }
+    };
+    poll();
+    const t = setInterval(poll, 3000);
+    return () => { alive = false; clearInterval(t); };
+  }, [project.id]);
 
   const triggerFull = async () => {
     try {
       setRunning(true);
-      await api.triggerGenerate(project.id);
-      toast.success('Pipeline started: generation → build → repair → acceptance → export');
+      await api.runFullPipeline(project.id);
+      toast.success('Pipeline started: architecture → plan → generate → build → repair → acceptance → export');
     } catch (e) {
       toast.error(e?.response?.data?.detail || 'Failed to start');
     } finally {
@@ -37,6 +51,14 @@ export default function Cockpit() {
       refresh();
     }
   };
+
+  const hasBrd = (project.brd_maturity || 0) > 0;
+  const pipelineDisabled = running || pipelineRunning || !hasBrd;
+  const pipelineLabel = !hasBrd
+    ? 'Answer BRD first'
+    : pipelineRunning
+      ? 'Pipeline running…'
+      : 'Run full pipeline';
 
   const links = [
     { to: `/projects/${project.id}/brd`, label: 'BRD intake', icon: MessagesSquare, desc: 'SME-style questions + structured requirements' },
@@ -64,17 +86,18 @@ export default function Cockpit() {
           <div>
             <div className="text-sm font-semibold">Run full pipeline</div>
             <p className="text-xs text-muted-foreground mt-1 max-w-xl">
-              Trigger: generation → build → safe repair (max 2 retries) → acceptance checks → auto-export
-              if acceptance is PASS or PARTIAL. Architecture must be detected and not blocked.
+              One click runs: architecture detection → plan → generate code → build (npm + pip) →
+              safe repair (max 2 retries) → acceptance checks → auto-export on PASS/PARTIAL.
+              You do not need 100% BRD maturity — even a few answers are enough to start.
             </p>
           </div>
           <button
             onClick={triggerFull}
-            disabled={running || !['Plan', 'Architecture', 'Repair', 'Acceptance', 'Export', 'Building'].includes(project.state) && project.state !== 'Plan'}
+            disabled={pipelineDisabled}
             data-testid="run-pipeline-button"
-            className="inline-flex items-center gap-2 rounded-md bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] px-4 py-2 text-sm font-medium hover:bg-[hsl(var(--primary)/0.9)] disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-md bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] px-4 py-2 text-sm font-medium hover:bg-[hsl(var(--primary)/0.9)] disabled:opacity-50 shadow-[0_8px_24px_-12px_hsl(var(--primary)/0.7)]"
           >
-            <Play className="h-4 w-4" /> Run pipeline
+            <Play className="h-4 w-4" /> {pipelineLabel}
           </button>
         </div>
       </div>

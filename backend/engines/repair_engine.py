@@ -56,13 +56,14 @@ class RepairOutcome:
 # ---------- classification ----------
 ERROR_TAXONOMY = [
     ("missing_module", re.compile(r"ModuleNotFoundError|Cannot find module|cannot resolve module", re.I)),
+    ("vite_resolution", re.compile(r"Failed to resolve import|Could not resolve|Rollup failed to resolve", re.I)),
     ("import_error", re.compile(r"ImportError", re.I)),
     ("syntax_error", re.compile(r"SyntaxError|Unexpected token|parse error", re.I)),
-    ("npm_missing_dep", re.compile(r"Missing\s+dependencies|npm\s+ERR!.*ENOENT", re.I)),
+    ("py_dep_conflict", re.compile(r"ResolutionImpossible|conflicting dependencies|cannot install", re.I)),
     ("py_missing_dep", re.compile(r"No matching distribution found|Could not find a version|ERROR: .*not found", re.I)),
+    ("npm_missing_dep", re.compile(r"Missing\s+dependencies|npm\s+ERR!.*ENOENT|ETARGET", re.I)),
     ("port_in_use", re.compile(r"EADDRINUSE", re.I)),
     ("type_error", re.compile(r"TypeError|TS\d+", re.I)),
-    ("vite_resolution", re.compile(r"Failed to resolve import", re.I)),
     ("json_invalid", re.compile(r"Unexpected token in JSON", re.I)),
 ]
 

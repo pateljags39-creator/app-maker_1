@@ -1,0 +1,506 @@
+/* General Resets */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* CSS Variables for theming (Dark Mode by default) */
+:root {
+  --bg-color-primary: #1e1e1e;
+  --bg-color-secondary: #2d2d2d;
+  --bg-color-tertiary: #3a3a3a;
+  --text-color-primary: #ffffff;
+  --text-color-secondary: #cccccc;
+  --border-color: #444444;
+
+  --button-bg-basic: #424242;
+  --button-hover-basic: #505050;
+  --button-active-basic: #606060;
+
+  --button-bg-operator: #ff9500;
+  --button-hover-operator: #ffa82b;
+  --button-active-operator: #ffbb57;
+  --button-text-operator: #ffffff;
+
+  --button-bg-equals: #007bff;
+  --button-hover-equals: #008cff;
+  --button-active-equals: #009fff;
+  --button-text-equals: #ffffff;
+
+  --button-bg-clear: #d32f2f; /* Red for clear */
+  --button-hover-clear: #e04f4f;
+  --button-active-clear: #ed7a7a;
+  --button-text-clear: #ffffff;
+
+  --button-bg-scientific: #5e5e5e;
+  --button-hover-scientific: #6b6b6b;
+  --button-active-scientific: #787878;
+
+  --button-bg-memory: #5e5e5e;
+  --button-hover-memory: #6b6b6b;
+  --button-active-memory: #787878;
+
+  --display-bg: #111111;
+  --display-text-expression: #999999;
+  --display-text-input: #ffffff;
+
+  --history-panel-bg: #282828;
+  --history-item-border: #3c3c3c;
+  --history-text-expression: #bbbbbb;
+  --history-text-result: #eeeeee;
+}
+
+/* Base Styles */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--bg-color-primary);
+  color: var(--text-color-primary);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden; /* Prevent scroll on mobile */
+}
+
+/* Calculator Container */
+.calculator-container {
+  display: flex;
+  flex-direction: row; /* For desktop: Calculator + History Side-by-Side */
+  background-color: var(--bg-color-secondary);
+  border-radius: 15px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  overflow: hidden; /* Ensures border-radius applies to children */
+  width: auto; /* Adjusts based on content */
+  height: auto; /* Adjusts based on content */
+  max-width: 90vw;
+  max-height: 90vh;
+}
+
+.calculator-main {
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  max-width: 420px; /* Standard calculator width */
+  min-width: 320px;
+  flex-shrink: 0;
+  gap: 15px;
+}
+
+/* Display */
+.calculator-display {
+  background-color: var(--display-bg);
+  border-radius: 10px;
+  padding: 20px;
+  text-align: right;
+  word-wrap: break-word;
+  overflow-x: auto;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+.calculator-display::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+.display-expression {
+  font-size: 1.2em;
+  color: var(--display-text-expression);
+  min-height: 1.2em; /* Ensure space even if empty */
+}
+
+.display-input {
+  font-size: 2.8em;
+  font-weight: bold;
+  color: var(--display-text-input);
+  line-height: 1.2;
+}
+
+/* Angle Mode Toggle */
+.angle-mode-toggle {
+  display: flex;
+  justify-content: flex-end;
+  padding-right: 5px;
+  margin-top: -10px;
+  margin-bottom: 5px;
+}
+
+.toggle-switch-container {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent; /* Remove tap highlight on mobile */
+  user-select: none; /* Prevent text selection */
+}
+
+.toggle-label {
+  font-size: 0.9em;
+  color: var(--text-color-secondary);
+  margin-right: 8px;
+  font-weight: normal;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 20px;
+  background-color: var(--bg-color-tertiary);
+  border-radius: 10px;
+  transition: background-color 0.3s ease;
+  border: 1px solid var(--border-color);
+}
+
+.toggle-switch-handle {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background-color: var(--text-color-primary);
+  border-radius: 50%;
+  transition: transform 0.3s ease, background-color 0.3s ease;
+}
+
+.toggle-switch-container.active .toggle-switch {
+  background-color: var(--button-bg-equals); /* Blue when active */
+}
+
+.toggle-switch-container.active .toggle-switch-handle {
+  transform: translateX(20px);
+}
+
+
+/* Button Grid */
+.calculator-buttons {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr); /* 5 columns for scientific mode */
+  gap: 10px;
+}
+
+/* Common Button Styles */
+.button {
+  background-color: var(--button-bg-basic);
+  color: var(--text-color-primary);
+  border: none;
+  border-radius: 10px;
+  padding: 15px 0;
+  font-size: 1.3em;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 50px; /* Ensure a minimum size */
+  min-height: 50px;
+  -webkit-tap-highlight-color: transparent; /* Remove tap highlight on mobile */
+}
+
+.button:hover:not(:disabled) {
+  background-color: var(--button-hover-basic);
+}
+
+.button:active:not(:disabled) {
+  background-color: var(--button-active-basic);
+  transform: scale(0.98);
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--button-bg-equals);
+  outline-offset: 2px;
+}
+
+/* Specific Button Styles */
+.zero-button {
+  grid-column: span 2; /* Make 0 button wider */
+}
+
+.operator {
+  background-color: var(--button-bg-operator);
+  color: var(--button-text-operator);
+}
+.operator:hover:not(:disabled) {
+  background-color: var(--button-hover-operator);
+}
+.operator:active:not(:disabled) {
+  background-color: var(--button-active-operator);
+}
+
+.equals {
+  background-color: var(--button-bg-equals);
+  color: var(--button-text-equals);
+  font-size: 1.8em;
+  font-weight: bold;
+}
+.equals:hover:not(:disabled) {
+  background-color: var(--button-hover-equals);
+}
+.equals:active:not(:disabled) {
+  background-color: var(--button-active-equals);
+}
+
+.clear {
+  background-color: var(--button-bg-clear);
+  color: var(--button-text-clear);
+  font-weight: bold;
+}
+.clear:hover:not(:disabled) {
+  background-color: var(--button-hover-clear);
+}
+.clear:active:not(:disabled) {
+  background-color: var(--button-active-clear);
+}
+
+.scientific, .memory {
+  background-color: var(--button-bg-scientific);
+  font-size: 1em;
+  color: var(--text-color-secondary);
+}
+.scientific:hover:not(:disabled), .memory:hover:not(:disabled) {
+  background-color: var(--button-hover-scientific);
+}
+.scientific:active:not(:disabled), .memory:active:not(:disabled) {
+  background-color: var(--button-active-scientific);
+}
+
+/* History Panel */
+.history-panel-container {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--history-panel-bg);
+  width: 300px; /* Fixed width for history */
+  border-left: 1px solid var(--border-color);
+  max-height: 100%; /* Ensure it doesn't overflow parent */
+}
+
+.history-panel-header {
+  padding: 15px 20px;
+  font-size: 1.3em;
+  font-weight: bold;
+  color: var(--text-color-primary);
+  border-bottom: 1px solid var(--border-color);
+  text-align: center;
+  flex-shrink: 0; /* Don't allow it to shrink */
+}
+
+.history-panel {
+  flex-grow: 1; /* Allow history items to take available space */
+  overflow-y: auto; /* Scroll for history items */
+  padding: 10px 15px;
+  display: flex;
+  flex-direction: column-reverse; /* Newest history at the bottom */
+  gap: 10px;
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: var(--button-bg-operator) var(--history-panel-bg); /* Firefox scrollbar color */
+}
+
+/* Custom scrollbar for Webkit browsers */
+.history-panel::-webkit-scrollbar {
+  width: 8px;
+}
+
+.history-panel::-webkit-scrollbar-track {
+  background: var(--history-panel-bg);
+  border-radius: 10px;
+}
+
+.history-panel::-webkit-scrollbar-thumb {
+  background-color: var(--button-bg-operator);
+  border-radius: 10px;
+  border: 2px solid var(--history-panel-bg);
+}
+
+.history-item {
+  background-color: var(--bg-color-tertiary);
+  border-radius: 8px;
+  padding: 12px 15px;
+  border: 1px solid var(--history-item-border);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  transition: background-color 0.2s ease;
+}
+
+.history-item:hover {
+  background-color: var(--button-hover-scientific);
+}
+
+.history-item-expression {
+  font-size: 0.9em;
+  color: var(--history-text-expression);
+  word-wrap: break-word;
+}
+
+.history-item-result {
+  font-size: 1.2em;
+  font-weight: bold;
+  color: var(--history-text-result);
+  word-wrap: break-word;
+}
+
+.clear-history-button {
+  background-color: var(--button-bg-clear);
+  color: var(--button-text-clear);
+  border: none;
+  border-radius: 8px;
+  padding: 12px 15px;
+  font-size: 1em;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+  margin: 15px;
+  flex-shrink: 0; /* Don't allow it to shrink */
+}
+
+.clear-history-button:hover:not(:disabled) {
+  background-color: var(--button-hover-clear);
+}
+
+.clear-history-button:active:not(:disabled) {
+  background-color: var(--button-active-clear);
+  transform: scale(0.98);
+}
+
+.clear-history-button:focus-visible {
+  outline: 2px solid var(--button-bg-equals);
+  outline-offset: 2px;
+}
+
+/* Responsiveness */
+@media (max-width: 768px) {
+  html, body, #root {
+    overflow-y: auto; /* Allow scrolling on smaller screens */
+    align-items: flex-start; /* Align to top for better scrolling */
+    padding: 20px 0;
+  }
+
+  .calculator-container {
+    flex-direction: column; /* Stack calculator and history vertically */
+    max-width: 95vw;
+    width: 100%;
+    margin-top: 20px; /* Add some margin from top */
+    margin-bottom: 20px;
+  }
+
+  .calculator-main {
+    max-width: 100%;
+    min-width: unset;
+    padding: 15px;
+    gap: 10px;
+  }
+
+  .calculator-display {
+    min-height: 100px;
+    padding: 15px;
+  }
+
+  .display-expression {
+    font-size: 1em;
+  }
+
+  .display-input {
+    font-size: 2.2em;
+  }
+
+  .calculator-buttons {
+    grid-template-columns: repeat(4, 1fr); /* Switch to 4 columns for basic calc layout */
+    gap: 8px;
+  }
+
+  /* Adjust button grid for 4-column layout */
+  .scientific, .memory {
+    display: none; /* Hide scientific buttons on smaller screens to simplify layout */
+  }
+  .clear {
+    grid-column: span 2;
+  }
+  .equals {
+    grid-column: span 2;
+  }
+  .zero-button {
+    grid-column: span 2;
+  }
+
+  /* Specific buttons that might need to be repositioned or re-sized */
+  .button.clear { grid-column: span 2; }
+  .button.equals { grid-column: span 2; }
+  .button.zero-button { grid-column: span 2; }
+
+
+  .button {
+    padding: 12px 0;
+    font-size: 1.1em;
+    min-width: unset;
+    min-height: unset;
+  }
+
+  .equals {
+    font-size: 1.5em;
+  }
+
+  .history-panel-container {
+    width: 100%;
+    max-height: 400px; /* Limit history height on mobile */
+    border-top: 1px solid var(--border-color);
+    border-left: none;
+  }
+
+  .history-panel-header {
+    padding: 12px 15px;
+    font-size: 1.1em;
+  }
+
+  .history-panel {
+    padding: 8px 10px;
+    gap: 8px;
+  }
+
+  .history-item {
+    padding: 10px 12px;
+  }
+
+  .history-item-expression {
+    font-size: 0.8em;
+  }
+
+  .history-item-result {
+    font-size: 1em;
+  }
+
+  .clear-history-button {
+    margin: 10px 15px;
+    padding: 10px 12px;
+    font-size: 0.9em;
+  }
+}
+
+@media (max-width: 480px) {
+  .calculator-main {
+    padding: 10px;
+    gap: 8px;
+  }
+  .calculator-buttons {
+    gap: 6px;
+  }
+  .button {
+    font-size: 1em;
+  }
+  .display-input {
+    font-size: 2em;
+  }
+}
