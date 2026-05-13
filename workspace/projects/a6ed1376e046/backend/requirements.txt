@@ -1,15 +1,9 @@
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
-sqlalchemy==2.0.29
+SQLAlchemy==2.0.30
 pydantic==2.7.1
+pydantic-settings==2.2.1
 python-multipart==0.0.9
-SQLAlchemy-Utils==0.41.2 # For UUIDType if needed, though not explicitly in plan, good for session_id. Let's stick to the plan and remove it if not explicitly needed.
-# Re-evaluating: The plan specifies session_id as string, so UUIDType is not strictly necessary for the current plan.
-# Let's remove SQLAlchemy-Utils to keep it minimal and aligned with the explicit plan.
-
-# Final list:
-# fastapi
-# uvicorn[standard]
-# sqlalchemy>=2
-# pydantic>=2
-# python-multipart
+python-dotenv==1.0.1
+starlette==0.37.2
+typing_extensions==4.12.0

@@ -2,16 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Custom global styles can be added here */
-body {
+/* Custom styles can be added here if needed, but Tailwind should cover most styling. */
+/* For example, to ensure the app takes full viewport height */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background-color: #f0f2f5; /* Light gray background */
-}
-
-#root {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
-  padding: 1rem;
 }

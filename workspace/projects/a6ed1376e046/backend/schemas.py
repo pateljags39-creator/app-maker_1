@@ -1,17 +1,21 @@
 from datetime import datetime
+from uuid import UUID
+
 from pydantic import BaseModel, ConfigDict
+
 
 class CalculationBase(BaseModel):
     session_id: str
     expression: str
-    result: str
+    result: float
+
 
 class CalculationCreate(CalculationBase):
-    # No additional fields needed for creation beyond base
     pass
 
+
 class CalculationResponse(CalculationBase):
-    id: int
+    id: UUID
     timestamp: datetime
 
     model_config = ConfigDict(from_attributes=True)
