@@ -41,11 +41,51 @@ async def override(project_id: str, body: ArchitectureOverrideRequest):
         brd["forced_architecture"] = body.forced_architecture
     decision = detect_architecture(brd, allow_limited_prototype=body.allow_limited_prototype).to_dict()
     out = await repo.upsert_architecture(project_id, decision)
+
+    # HIGH-1: if limited_prototype is accepted on frontend_only with backend signals,
+    # propagate the honest "unsupported" status onto the affected BRD requirements
+    # so plan/acceptance never silently claim coverage of un-buildable features.
+    marked = 0
+    if (
+        decision["kind"] == "frontend_only"
+        and decision["limited_prototype_accepted"]
+        and decision["unsupported_requirement_indices"]
+    ):
+        reqs = list(brd.get("requirements") or [])
+        keywords_csv = ", ".join(decision["unsupported_signal_keywords"]) or "backend"
+        reason = (
+            f"frontend_only limited_prototype: requires {keywords_csv} which is not "
+            "deliverable in a frontend-only build."
+        )
+        for idx in decision["unsupported_requirement_indices"]:
+            if 0 <= idx < len(reqs):
+                req = reqs[idx]
+                if isinstance(req, str):
+                    req = {"text": req}
+                if not isinstance(req, dict):
+                    continue
+                req["status"] = "unsupported"
+                existing_reason = req.get("unsupported_reason") or req.get("block_reason")
+                if not existing_reason:
+                    req["unsupported_reason"] = reason
+                reqs[idx] = req
+                marked += 1
+        if marked:
+            brd["requirements"] = reqs
+            await repo.upsert_brd(project_id, brd=brd)
+
     await get_ledger().emit_simple(
         project_id=project_id, type="architecture.overridden",
-        message=f"Override -> {decision['kind']} (limited_prototype={body.allow_limited_prototype})",
-        payload={"kind": decision["kind"], "limited_prototype": body.allow_limited_prototype},
-        severity="info",
+        message=(
+            f"Override -> {decision['kind']} (limited_prototype={body.allow_limited_prototype}); "
+            f"{marked} requirement(s) marked unsupported"
+        ),
+        payload={
+            "kind": decision["kind"],
+            "limited_prototype": body.allow_limited_prototype,
+            "unsupported_marked": marked,
+        },
+        severity="warning" if marked else "info",
     )
     return out
 

@@ -140,17 +140,32 @@ not yet started.
 - **Verification:** `/api/system/health` now exposes:
   `tier_models: {"light":"gemini-2.5-flash","heavy":"gemini-2.5-pro"}`.
 
-### HIGH-1 — Frontend-only gating is advisory, not enforced
+### HIGH-1 — Frontend-only gating is advisory, not enforced ✅ FIXED 2026-02-13
 - **Symptom:** If a user overrides architecture to `frontend_only` but the BRD
   requires a backend (e.g., notes app with persistence), the `routes/plan.py`
   endpoint refuses to proceed only when `decision.blocked == True`. If the
   override clears the block, the plan is generated and code is written.
 - **Impact:** Violates BRD's "block invalid frontend-only generation paths"
   requirement. Generated app would look complete but secretly miss persistence.
-- **Recommended fix (Phase 3 prereq):** In `architecture_engine.override`, never
-  allow `frontend_only` when `requires_backend == True` from the deterministic
-  classification (unless user explicitly acknowledges a 'demo-only' flag, which
-  must propagate into Plan + Acceptance as `unsupported` requirements).
+- **Fix applied:**
+  - `architecture_engine.detect_architecture` now returns
+    `unsupported_requirement_indices` + `unsupported_signal_keywords` whenever
+    `limited_prototype` is accepted on a frontend_only override against a BRD
+    that contains backend signals.
+  - `routes/architecture.override` propagates those onto the BRD as
+    `requirement.status="unsupported"` + `requirement.unsupported_reason`,
+    persists the updated BRD, and emits a `warning`-severity ledger event with
+    the count of marked requirements.
+  - `acceptance_engine.run_acceptance` now records `status="UNSUPPORTED"` for
+    those requirements (instead of falsely claiming PARTIAL coverage), and
+    emits a dedicated `requirements.unsupported_acknowledged` PARTIAL check.
+- **Verification:**
+  - Unit tests at `/app/backend/tests/test_high1_frontend_only_gating.py` —
+    block path, limited_prototype path (R1+R2 flagged, R3 untouched), and pure
+    frontend BRD path — all green.
+  - Live API smoke: created project, seeded BRD, called `/detect`, `/override`
+    twice (with and without ack), confirmed BRD requirements now carry
+    `status="unsupported"` + reason text.
 
 ### HIGH-2 — Improve/Fix and Rework routes are entirely missing
 - The BRD lists these as core capabilities. Once a project has been generated,
@@ -278,6 +293,24 @@ No working flow was removed, no architecture was silently replaced, no fallback
 was weakened, and no LLM calls were made during the audit itself. Improve was
 designed to use exactly **1** heavy (Pro) call per request — no per-file
 chatter. Repair still uses 1 heavy call per attempt (max 2 attempts).
+
+### 2026-02-13 follow-up pass — live verification + HIGH-1 fix
+
+6. **Live Improve/Fix E2E verified** with one Pro call on a hand-seeded tiny
+   calculator workspace at `calc-improve-smoke`:
+   - snapshot taken
+   - 1 `gemini-2.5-pro` call returned a valid JSON manifest editing
+     `frontend/src/App.jsx` (adds a sqrt button)
+   - constraints validated (no violations, single file, within budget)
+   - manifest applied atomically
+   - real `npm install` + `npm run build` ran (frontend-only workspace)
+   - regression detector caught seeded `PASS` vs actual `PARTIAL` (backend
+     skipped → overall PARTIAL) and **auto-rolled-back** to snapshot
+   - attempt persisted to `improve_attempts` with `status=rolled_back`,
+     `error="regression: build PASS -> PARTIAL"`
+   - Test harness: `/app/backend/tests/test_improve_calculator_e2e.py`
+
+7. **HIGH-1 fix shipped** (see §3 HIGH-1 above for full detail).
 
 ---
 

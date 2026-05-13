@@ -188,6 +188,17 @@ def run_acceptance(
         text = (req.get("text", "") if isinstance(req, dict) else str(req)).strip()
         if not text:
             continue
+        # HIGH-1: honor explicitly-unsupported requirements (frontend_only limited_prototype
+        # path) — record them as honestly unsupported, not as weak coverage.
+        req_status = req.get("status") if isinstance(req, dict) else None
+        if req_status == "unsupported":
+            coverage.append({
+                "requirement": text,
+                "matched_files": [],
+                "status": "UNSUPPORTED",
+                "reason": (req.get("unsupported_reason") if isinstance(req, dict) else None) or "marked unsupported in BRD",
+            })
+            continue
         keys = [k for k in re.findall(r"\b\w{4,}\b", text.lower()) if k not in {"with", "this", "that", "have", "from", "will", "each", "into", "shall", "must"}]
         matched: list[str] = []
         for path, content in workspace_text.items():
@@ -202,12 +213,22 @@ def run_acceptance(
             "status": "PASS" if matched else "PARTIAL",
         })
     report.requirement_coverage = coverage
-    if coverage and all(c["status"] == "PASS" for c in coverage):
-        report.checks.append(CheckResult("requirements.coverage", "PASS", f"{len(coverage)} requirements matched"))
-    elif coverage:
-        partials = sum(1 for c in coverage if c["status"] != "PASS")
-        report.checks.append(CheckResult("requirements.coverage", "PARTIAL", f"{partials}/{len(coverage)} requirements have weak coverage", "warning"))
-    else:
+    # Exclude UNSUPPORTED from coverage gap math; surface them as their own info check.
+    unsupported_count = sum(1 for c in coverage if c["status"] == "UNSUPPORTED")
+    coverable = [c for c in coverage if c["status"] != "UNSUPPORTED"]
+    if unsupported_count:
+        report.checks.append(CheckResult(
+            "requirements.unsupported_acknowledged",
+            "PARTIAL",
+            f"{unsupported_count} requirement(s) explicitly marked unsupported (limited_prototype / architecture gate).",
+            "warning",
+        ))
+    if coverable and all(c["status"] == "PASS" for c in coverable):
+        report.checks.append(CheckResult("requirements.coverage", "PASS", f"{len(coverable)} requirements matched"))
+    elif coverable:
+        partials = sum(1 for c in coverable if c["status"] != "PASS")
+        report.checks.append(CheckResult("requirements.coverage", "PARTIAL", f"{partials}/{len(coverable)} requirements have weak coverage", "warning"))
+    elif not unsupported_count:
         report.checks.append(CheckResult("requirements.coverage", "PARTIAL", "no structured requirements provided", "warning"))
 
     # Overall

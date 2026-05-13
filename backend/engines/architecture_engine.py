@@ -20,11 +20,26 @@ class ArchitectureDecision:
     blocked: bool = False
     block_reasons: list[str] | None = None
     limited_prototype_accepted: bool = False
+    # Indices into brd.requirements of items that depend on the missing
+    # backend/persistence layer when limited_prototype frontend_only is accepted.
+    # Plan/Acceptance use this to mark them as `status=unsupported` honestly.
+    unsupported_requirement_indices: list[int] | None = None
+    unsupported_signal_keywords: list[str] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["block_reasons"] = d["block_reasons"] or []
+        d["unsupported_requirement_indices"] = d["unsupported_requirement_indices"] or []
+        d["unsupported_signal_keywords"] = d["unsupported_signal_keywords"] or []
         return d
+
+
+_BACKEND_KEYWORDS = {
+    "persist", "database", "save", "store", "record", "history", "crud",
+    "login", "signup", "auth", "user account", "upload", "file storage",
+    "api", "backend", "server", "webhook", "integration", "third-party",
+    "external service", "payment", "send email",
+}
 
 
 def _has_any(brd: dict[str, Any], keywords: list[str]) -> tuple[bool, list[str]]:
@@ -42,6 +57,28 @@ def _has_any(brd: dict[str, Any], keywords: list[str]) -> tuple[bool, list[str]]
         if any(kw in h for h in haystack):
             hits.append(kw)
     return (len(hits) > 0), hits
+
+
+def _backend_dependent_requirement_indices(brd: dict[str, Any]) -> tuple[list[int], list[str]]:
+    """Return indices of BRD requirements whose text hits any backend keyword.
+
+    Also returns the de-duplicated list of keywords that actually triggered the hit
+    so we can record an honest reason on each marked requirement.
+    """
+    hit_indices: list[int] = []
+    hit_keywords: set[str] = set()
+    for i, r in enumerate(brd.get("requirements", []) or []):
+        if isinstance(r, dict):
+            text = (r.get("text", "") + " " + r.get("detail", "")).lower()
+        elif isinstance(r, str):
+            text = r.lower()
+        else:
+            continue
+        local_hits = [kw for kw in _BACKEND_KEYWORDS if kw in text]
+        if local_hits:
+            hit_indices.append(i)
+            hit_keywords.update(local_hits)
+    return hit_indices, sorted(hit_keywords)
 
 
 def detect_architecture(brd: dict[str, Any], allow_limited_prototype: bool = False) -> ArchitectureDecision:
@@ -85,6 +122,8 @@ def detect_architecture(brd: dict[str, Any], allow_limited_prototype: bool = Fal
     # Block invalid combos: e.g., user explicitly forces frontend_only but BRD demands persistence.
     blocked = False
     block_reasons: list[str] = []
+    unsupported_idx: list[int] = []
+    unsupported_kw: list[str] = []
     forced_kind = (brd.get("forced_architecture") or "").strip().lower()
     if forced_kind and forced_kind in KINDS:
         if forced_kind == "frontend_only" and (needs_persist or needs_api):
@@ -96,7 +135,13 @@ def detect_architecture(brd: dict[str, Any], allow_limited_prototype: bool = Fal
                 )
             else:
                 kind = forced_kind
-                reasoning.append("limited_prototype: user accepted frontend-only despite backend signals.")
+                # Identify the specific requirements that won't be deliverable
+                # so the override flow can mark them unsupported in the BRD.
+                unsupported_idx, unsupported_kw = _backend_dependent_requirement_indices(brd)
+                reasoning.append(
+                    "limited_prototype: user accepted frontend-only despite backend signals. "
+                    f"{len(unsupported_idx)} requirement(s) will be marked unsupported."
+                )
         else:
             kind = forced_kind
             reasoning.append(f"forced_architecture honored: {forced_kind}")
@@ -109,4 +154,6 @@ def detect_architecture(brd: dict[str, Any], allow_limited_prototype: bool = Fal
         blocked=blocked,
         block_reasons=block_reasons,
         limited_prototype_accepted=bool(allow_limited_prototype),
+        unsupported_requirement_indices=unsupported_idx,
+        unsupported_signal_keywords=unsupported_kw,
     )
