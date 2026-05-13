@@ -83,7 +83,23 @@ Full architecture audit at `/app/memory/AUDIT.md` (last updated 2026-02-13).
 - `/app/test_reports/iteration_1.json` — Phase 2 testing agent report
 
 ## Recent changelog
-- **2026-02-13 (third pass)**:
+- **2026-05-13 (continuation pass — user-reported "calculator made a mess" bug)**:
+  - **HIGH-2 fixed — Stale package-lock.json broke every project where the deterministic
+    deps-fixup added a dep after first build.** `build_engine.build_frontend` was using
+    `npm ci` whenever `package-lock.json` existed, but the deterministic fixup
+    `generation_engine._ensure_frontend_deps` writes/updates `package.json` *after*
+    a previous install ran (or after the LLM forgets to declare an imported package),
+    leaving the lockfile stale. `npm ci` refuses to update a stale lockfile, so the
+    next `vite build` failed with `Rollup failed to resolve import "uuid"` (or any
+    similar package). Root cause confirmed by inspecting workspace
+    `a6ed1376e046` (Web Calculator Pro) — build logs show 2 consecutive
+    `Rollup failed to resolve import "uuid"` failures even though `uuid` was correctly
+    listed in `package.json`. Fix: build engine now treats a lock as "fresh" only if
+    (mtime ≥ package.json mtime − 1s) AND (every declared dep appears in the lock).
+    Otherwise the stale lock is deleted and `npm install` regenerates it. Manual
+    rebuild of the failing calculator workspace now passes (`✓ 109 modules transformed`).
+    Unit tests at `tests/test_high2_stale_lockfile_fallback.py` cover all 4 cases.
+
   - **Stuck-pipeline recovery shipped** (Issue 1 from user). New `engines/recovery_engine.py`
     with `sweep_stale_pipelines()` (called on FastAPI startup; reverts any project in
     `Generating/Building/Repair/Acceptance` older than 90s to its safest prior checkpoint

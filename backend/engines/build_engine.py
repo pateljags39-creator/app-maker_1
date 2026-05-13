@@ -127,10 +127,39 @@ async def build_frontend(workspace: Path, project_id: str) -> list[StepResult]:
         ))
         return results
 
-    # 1) install (prefer npm ci if package-lock present; else npm install)
+    # 1) install
+    #    Prefer `npm ci` (deterministic, fast) only when package-lock.json is fresh.
+    #    A lock is "fresh" iff:
+    #      - it exists,
+    #      - its mtime >= package.json mtime (no edits to package.json since lock was regenerated),
+    #      - it actually mentions every dependency declared in package.json.
+    #    Otherwise the lock is stale (typical case: deterministic-deps fixup or LLM repair
+    #    added a dep to package.json after a previous install) and `npm ci` would refuse to
+    #    update it, causing builds to fail with "Rollup failed to resolve import ...".
+    #    In that case delete the stale lock and run `npm install` so npm regenerates it.
     install_cmd = ["npm", "install", "--no-audit", "--no-fund", "--loglevel=error", "--prefer-offline"]
-    if (fe / "package-lock.json").exists():
+    lock = fe / "package-lock.json"
+    pjson = fe / "package.json"
+    use_ci = False
+    if lock.exists() and pjson.exists():
+        try:
+            lock_fresh_by_mtime = lock.stat().st_mtime >= pjson.stat().st_mtime - 1.0  # 1s tolerance
+            import json as _json
+            pkg = _json.loads(pjson.read_text(encoding="utf-8"))
+            declared = set((pkg.get("dependencies") or {}).keys()) | set((pkg.get("devDependencies") or {}).keys())
+            lock_text = lock.read_text(encoding="utf-8", errors="replace")
+            all_present = all(f'"node_modules/{d}"' in lock_text or f'"{d}"' in lock_text for d in declared)
+            use_ci = lock_fresh_by_mtime and all_present
+        except Exception:
+            use_ci = False
+    if use_ci:
         install_cmd = ["npm", "ci", "--no-audit", "--no-fund", "--loglevel=error", "--prefer-offline"]
+    elif lock.exists():
+        # Stale lock — remove it so npm install can regenerate a consistent lockfile.
+        try:
+            lock.unlink()
+        except Exception:
+            pass
     results.append(await _run(install_cmd, fe, "frontend.install", timeout=600))
 
     if results[-1].returncode != 0:
